@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "convex dev",
+    "categories:seed": "convex run categories:seed",
     "typecheck": "tsc -p convex/tsconfig.json",
     "test": "vitest run"
   },

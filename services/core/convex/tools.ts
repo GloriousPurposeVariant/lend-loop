@@ -1,25 +1,33 @@
 import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import { mutation, query, type QueryCtx } from "./_generated/server";
 import { requireOwnerOrAdmin, requireUser } from "./lib/auth";
 import { appError } from "./lib/errors";
-import { cleanToolText, toolCategoryValidator, toolConditionValidator } from "./lib/toolFields";
+import { cleanToolText, toolConditionValidator } from "./lib/toolFields";
 
 // What anyone, signed in or not, may see about a tool. The `returns` validator
 // enforces it: returning any other field makes the query fail.
 const publicToolValidator = v.object({
   name: v.string(),
-  category: toolCategoryValidator,
+  category: v.string(),
 });
 
 const ownToolValidator = v.object({
   _id: v.id("tools"),
   _creationTime: v.number(),
   name: v.string(),
-  category: toolCategoryValidator,
+  categoryId: v.id("categories"),
+  categoryLabel: v.string(),
   condition: toolConditionValidator,
   description: v.string(),
 });
+
+async function categoryLabel(ctx: QueryCtx, categoryId: Id<"categories">) {
+  const category = await ctx.db.get("categories", categoryId);
+  // Categories are never deleted, so this fallback only guards against bad data.
+  return category?.label ?? "Uncategorised";
+}
 
 /** Public tool board: name and category only, newest first. */
 export const listPublic = query({
@@ -31,10 +39,13 @@ export const listPublic = query({
       .withIndex("by_status", (q) => q.eq("status", "active"))
       .order("desc")
       .paginate(args.paginationOpts);
-    return {
-      ...result,
-      page: result.page.map((tool) => ({ name: tool.name, category: tool.category })),
-    };
+    const page = await Promise.all(
+      result.page.map(async (tool) => ({
+        name: tool.name,
+        category: await categoryLabel(ctx, tool.categoryId),
+      })),
+    );
+    return { ...result, page };
   },
 });
 
@@ -49,14 +60,17 @@ export const listMine = query({
       .withIndex("by_owner_and_status", (q) => q.eq("ownerId", user._id).eq("status", "active"))
       .order("desc")
       .take(100);
-    return tools.map((tool) => ({
-      _id: tool._id,
-      _creationTime: tool._creationTime,
-      name: tool.name,
-      category: tool.category,
-      condition: tool.condition,
-      description: tool.description,
-    }));
+    return await Promise.all(
+      tools.map(async (tool) => ({
+        _id: tool._id,
+        _creationTime: tool._creationTime,
+        name: tool.name,
+        categoryId: tool.categoryId,
+        categoryLabel: await categoryLabel(ctx, tool.categoryId),
+        condition: tool.condition,
+        description: tool.description,
+      })),
+    );
   },
 });
 
@@ -64,7 +78,7 @@ export const listMine = query({
 export const create = mutation({
   args: {
     name: v.string(),
-    category: toolCategoryValidator,
+    categoryId: v.id("categories"),
     condition: toolConditionValidator,
     description: v.string(),
   },
@@ -72,10 +86,14 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     const { name, description } = cleanToolText(args);
+    const category = await ctx.db.get("categories", args.categoryId);
+    if (category === null || !category.isActive) {
+      throw appError("INVALID_INPUT", "Choose one of the available categories.");
+    }
     return await ctx.db.insert("tools", {
       ownerId: user._id,
       name,
-      category: args.category,
+      categoryId: category._id,
       condition: args.condition,
       description,
       status: "active",

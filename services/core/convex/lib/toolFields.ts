@@ -2,25 +2,13 @@ import { v } from "convex/values";
 import { appError } from "./errors";
 
 // Single source of truth for tool fields. The web app imports these too, so the
-// form's options and limits always match what the backend accepts.
-
-export const TOOL_CATEGORIES = [
-  "power-tools",
-  "hand-tools",
-  "garden",
-  "ladders",
-  "cleaning",
-  "camping",
-  "kitchen",
-  "other",
-] as const;
+// form's options and limits always match what the backend accepts. Categories are
+// data (the categories table), not code; conditions are a fixed rating scale.
 
 export const TOOL_CONDITIONS = ["new", "good", "fair", "worn"] as const;
 
-export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
 export type ToolCondition = (typeof TOOL_CONDITIONS)[number];
 
-export const toolCategoryValidator = v.union(...TOOL_CATEGORIES.map((c) => v.literal(c)));
 export const toolConditionValidator = v.union(...TOOL_CONDITIONS.map((c) => v.literal(c)));
 
 export const TOOL_LIMITS = {

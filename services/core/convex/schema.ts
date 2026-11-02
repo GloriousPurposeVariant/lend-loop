@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { toolCategoryValidator, toolConditionValidator } from "./lib/toolFields";
+import { toolConditionValidator } from "./lib/toolFields";
 
 export const roleValidator = v.union(v.literal("user"), v.literal("admin"));
 
@@ -16,10 +16,20 @@ export default defineSchema({
     .index("by_token_identifier", ["tokenIdentifier"])
     .index("by_email", ["email"]),
 
+  // Managed by admins. Never deleted, only deactivated, so tools always point at a real row.
+  categories: defineTable({
+    slug: v.string(),
+    label: v.string(),
+    isActive: v.boolean(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_label", ["label"])
+    .index("by_active_and_label", ["isActive", "label"]),
+
   tools: defineTable({
     ownerId: v.id("users"),
     name: v.string(),
-    category: toolCategoryValidator,
+    categoryId: v.id("categories"),
     condition: toolConditionValidator,
     description: v.string(),
     // Soft delete: removed tools stay so past loans still point at a real row.
