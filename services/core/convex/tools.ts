@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import { requireOwnerOrAdmin, requireUser } from "./lib/auth";
 import { appError } from "./lib/errors";
+import { declinePendingRequests } from "./lib/loans";
 import { cleanToolText, toolConditionValidator } from "./lib/toolFields";
 
 // What anyone, signed in or not, may see about a tool. The `returns` validator
@@ -21,6 +22,18 @@ const ownToolValidator = v.object({
   categoryLabel: v.string(),
   condition: toolConditionValidator,
   description: v.string(),
+});
+
+// What signed-in members see when browsing. Owner email stays private.
+const browseToolValidator = v.object({
+  _id: v.id("tools"),
+  name: v.string(),
+  categoryLabel: v.string(),
+  condition: toolConditionValidator,
+  description: v.string(),
+  ownerName: v.string(),
+  ownerIsTrustedLender: v.boolean(),
+  isMine: v.boolean(),
 });
 
 async function categoryLabel(ctx: QueryCtx, categoryId: Id<"categories">) {
@@ -44,6 +57,41 @@ export const listPublic = query({
         name: tool.name,
         category: await categoryLabel(ctx, tool.categoryId),
       })),
+    );
+    return { ...result, page };
+  },
+});
+
+/** Signed-in tool browser, newest first, optionally filtered by category. */
+export const browse = query({
+  args: { categoryId: v.optional(v.id("categories")), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(browseToolValidator),
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const { categoryId } = args;
+    const tools =
+      categoryId === undefined
+        ? ctx.db.query("tools").withIndex("by_status", (q) => q.eq("status", "active"))
+        : ctx.db
+            .query("tools")
+            .withIndex("by_status_and_category", (q) =>
+              q.eq("status", "active").eq("categoryId", categoryId),
+            );
+    const result = await tools.order("desc").paginate(args.paginationOpts);
+    const page = await Promise.all(
+      result.page.map(async (tool) => {
+        const owner = await ctx.db.get("users", tool.ownerId);
+        return {
+          _id: tool._id,
+          name: tool.name,
+          categoryLabel: await categoryLabel(ctx, tool.categoryId),
+          condition: tool.condition,
+          description: tool.description,
+          ownerName: owner?.displayName ?? "Unknown user",
+          ownerIsTrustedLender: owner?.isTrustedLender ?? false,
+          isMine: tool.ownerId === user._id,
+        };
+      }),
     );
     return { ...result, page };
   },
@@ -117,6 +165,8 @@ export const remove = mutation({
       removedAt: Date.now(),
       removedBy: user._id,
     });
+    // Nobody can approve these any more. Approved loans stay, so they can still be returned.
+    await declinePendingRequests(ctx, tool._id, "toolRemoved");
     return null;
   },
 });

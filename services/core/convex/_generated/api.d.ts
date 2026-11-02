@@ -11,8 +11,11 @@
 import type * as categories from "../categories.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_categoryFields from "../lib/categoryFields.js";
+import type * as lib_dates from "../lib/dates.js";
 import type * as lib_errors from "../lib/errors.js";
+import type * as lib_loans from "../lib/loans.js";
 import type * as lib_toolFields from "../lib/toolFields.js";
+import type * as loans from "../loans.js";
 import type * as tools from "../tools.js";
 import type * as users from "../users.js";
 
@@ -26,8 +29,11 @@ declare const fullApi: ApiFromModules<{
   categories: typeof categories;
   "lib/auth": typeof lib_auth;
   "lib/categoryFields": typeof lib_categoryFields;
+  "lib/dates": typeof lib_dates;
   "lib/errors": typeof lib_errors;
+  "lib/loans": typeof lib_loans;
   "lib/toolFields": typeof lib_toolFields;
+  loans: typeof loans;
   tools: typeof tools;
   users: typeof users;
 }>;
