@@ -1,40 +1,44 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
-import { alice, bob, expectAppError, modules } from "./test.setup";
-
-type TestConvex = ReturnType<typeof convexTest>;
-
-const drill = {
-  name: "Cordless drill",
-  category: "power-tools",
-  condition: "good",
-  description: "18V, two batteries.",
-} as const;
+import { alice, bob, expectAppError, modules, seedCategory, type TestConvex } from "./test.setup";
 
 const firstPage = { paginationOpts: { numItems: 10, cursor: null } };
 
+function drill(categoryId: Id<"categories">) {
+  return {
+    name: "Cordless drill",
+    categoryId,
+    condition: "good",
+    description: "18V, two batteries.",
+  } as const;
+}
+
 /** Signs alice and bob up, and lists a drill as alice. */
 async function setup(t: TestConvex) {
+  const categoryId = await seedCategory(t);
   await t.withIdentity(alice).mutation(api.users.ensureCurrent, {});
   await t.withIdentity(bob).mutation(api.users.ensureCurrent, {});
-  const toolId = await t.withIdentity(alice).mutation(api.tools.create, drill);
-  return { toolId };
+  const toolId = await t.withIdentity(alice).mutation(api.tools.create, drill(categoryId));
+  return { toolId, categoryId };
 }
 
 describe("create", () => {
   test("rejects signed-out callers", async () => {
     const t = convexTest(schema, modules);
-    await expectAppError(t.mutation(api.tools.create, drill), "UNAUTHENTICATED");
+    const categoryId = await seedCategory(t);
+    await expectAppError(t.mutation(api.tools.create, drill(categoryId)), "UNAUTHENTICATED");
   });
 
   test("sets the owner from the caller and trims text", async () => {
     const t = convexTest(schema, modules);
+    const categoryId = await seedCategory(t);
     await t.withIdentity(alice).mutation(api.users.ensureCurrent, {});
     const toolId = await t
       .withIdentity(alice)
-      .mutation(api.tools.create, { ...drill, name: "  Cordless drill  " });
+      .mutation(api.tools.create, { ...drill(categoryId), name: "  Cordless drill  " });
 
     const tool = await t.run((ctx) => ctx.db.get("tools", toolId));
     const owner = await t.run((ctx) => ctx.db.get("users", tool!.ownerId));
@@ -45,33 +49,45 @@ describe("create", () => {
 
   test("rejects an ownerId sent by the client", async () => {
     const t = convexTest(schema, modules);
+    const categoryId = await seedCategory(t);
     await t.withIdentity(alice).mutation(api.users.ensureCurrent, {});
     const bobId = await t.withIdentity(bob).mutation(api.users.ensureCurrent, {});
     // args has no ownerId, so Convex rejects the extra field before the handler runs.
     await expect(
-      t.withIdentity(alice).mutation(api.tools.create, { ...drill, ownerId: bobId } as never),
+      t
+        .withIdentity(alice)
+        .mutation(api.tools.create, { ...drill(categoryId), ownerId: bobId } as never),
     ).rejects.toThrow();
   });
 
-  test("rejects a blank name and an unknown category", async () => {
+  test("rejects a blank name", async () => {
     const t = convexTest(schema, modules);
+    const categoryId = await seedCategory(t);
     await t.withIdentity(alice).mutation(api.users.ensureCurrent, {});
     await expectAppError(
-      t.withIdentity(alice).mutation(api.tools.create, { ...drill, name: "   " }),
+      t.withIdentity(alice).mutation(api.tools.create, { ...drill(categoryId), name: "   " }),
       "INVALID_INPUT",
     );
-    await expect(
-      t.withIdentity(alice).mutation(api.tools.create, { ...drill, category: "boats" } as never),
-    ).rejects.toThrow();
+  });
+
+  test("rejects a deactivated category", async () => {
+    const t = convexTest(schema, modules);
+    const categoryId = await seedCategory(t);
+    await t.withIdentity(alice).mutation(api.users.ensureCurrent, {});
+    await t.run((ctx) => ctx.db.patch("categories", categoryId, { isActive: false }));
+    await expectAppError(
+      t.withIdentity(alice).mutation(api.tools.create, drill(categoryId)),
+      "INVALID_INPUT",
+    );
   });
 });
 
 describe("listPublic", () => {
-  test("returns only name and category, even when signed out", async () => {
+  test("returns only name and category label, even when signed out", async () => {
     const t = convexTest(schema, modules);
     await setup(t);
     const result = await t.query(api.tools.listPublic, firstPage);
-    expect(result.page).toEqual([{ name: "Cordless drill", category: "power-tools" }]);
+    expect(result.page).toEqual([{ name: "Cordless drill", category: "Power tools" }]);
   });
 
   test("hides removed tools", async () => {
@@ -86,11 +102,12 @@ describe("listPublic", () => {
 describe("listMine", () => {
   test("returns only the caller's tools", async () => {
     const t = convexTest(schema, modules);
-    await setup(t);
-    await t.withIdentity(bob).mutation(api.tools.create, { ...drill, name: "Ladder" });
+    const { categoryId } = await setup(t);
+    await t.withIdentity(bob).mutation(api.tools.create, { ...drill(categoryId), name: "Ladder" });
 
     const mine = await t.withIdentity(alice).query(api.tools.listMine, {});
     expect(mine.map((tool) => tool.name)).toEqual(["Cordless drill"]);
+    expect(mine[0].categoryLabel).toBe("Power tools");
   });
 });
 
