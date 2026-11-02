@@ -1,0 +1,19 @@
+{
+  "name": "@lendloop/core",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "convex dev",
+    "typecheck": "tsc -p convex/tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "convex": "1.49.0"
+  },
+  "devDependencies": {
+    "@edge-runtime/vm": "5.0.0",
+    "convex-test": "0.0.66",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}
