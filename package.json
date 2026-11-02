@@ -1,0 +1,27 @@
+{
+  "name": "lendloop",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "apps/*",
+    "services/*"
+  ],
+  "scripts": {
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "convex:admin-key": "docker compose exec convex-backend ./generate_admin_key.sh",
+    "dev:web": "npm run dev -w @lendloop/web",
+    "dev:core": "npm run dev -w @lendloop/core",
+    "lint": "npm run lint -w @lendloop/web",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test -w @lendloop/core",
+    "build": "npm run build -w @lendloop/web",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.9.10"
+  }
+}
