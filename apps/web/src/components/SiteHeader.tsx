@@ -30,8 +30,17 @@ export function SiteHeader() {
         </Unauthenticated>
         <Authenticated>
           <nav className="flex items-center gap-4 text-sm">
+            <Link href="/tools" className="hover:underline">
+              Browse
+            </Link>
             <Link href="/my-listings" className="hover:underline">
               My listings
+            </Link>
+            <Link href="/requests" className="hover:underline">
+              My requests
+            </Link>
+            <Link href="/incoming" className="hover:underline">
+              Incoming
             </Link>
             {isAdmin && (
               <Link
