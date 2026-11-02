@@ -8,9 +8,12 @@
  * @module
  */
 
-import type * as health from "../health.js";
+import type * as categories from "../categories.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_categoryFields from "../lib/categoryFields.js";
 import type * as lib_errors from "../lib/errors.js";
+import type * as lib_toolFields from "../lib/toolFields.js";
+import type * as tools from "../tools.js";
 import type * as users from "../users.js";
 
 import type {
@@ -20,9 +23,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  health: typeof health;
+  categories: typeof categories;
   "lib/auth": typeof lib_auth;
+  "lib/categoryFields": typeof lib_categoryFields;
   "lib/errors": typeof lib_errors;
+  "lib/toolFields": typeof lib_toolFields;
+  tools: typeof tools;
   users: typeof users;
 }>;
 
