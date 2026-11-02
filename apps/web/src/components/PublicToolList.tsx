@@ -2,7 +2,6 @@
 
 import { api } from "@lendloop/core/convex/_generated/api";
 import { usePaginatedQuery } from "convex/react";
-import { CATEGORY_LABELS } from "@/lib/labels";
 
 const PAGE_SIZE = 20;
 
@@ -38,7 +37,7 @@ export function PublicToolList() {
         {results.map((tool, i) => (
           <li key={i} className="flex items-center justify-between px-4 py-3">
             <span className="font-medium">{tool.name}</span>
-            <span className="text-sm text-gray-500">{CATEGORY_LABELS[tool.category]}</span>
+            <span className="text-sm text-gray-500">{tool.category}</span>
           </li>
         ))}
       </ul>

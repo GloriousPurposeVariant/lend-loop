@@ -34,9 +34,12 @@ export function SiteHeader() {
               My listings
             </Link>
             {isAdmin && (
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium">
+              <Link
+                href="/admin/categories"
+                className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium hover:bg-gray-200"
+              >
                 Admin
-              </span>
+              </Link>
             )}
             <UserButton />
           </nav>

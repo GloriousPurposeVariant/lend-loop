@@ -1,18 +1,7 @@
-import type { ToolCategory, ToolCondition } from "@lendloop/core/convex/lib/toolFields";
+import type { ToolCondition } from "@lendloop/core/convex/lib/toolFields";
 
-// Record<ToolCategory, ...> makes TypeScript fail if a category is added in the
-// backend without a label here.
-export const CATEGORY_LABELS: Record<ToolCategory, string> = {
-  "power-tools": "Power tools",
-  "hand-tools": "Hand tools",
-  garden: "Garden",
-  ladders: "Ladders",
-  cleaning: "Cleaning",
-  camping: "Camping",
-  kitchen: "Kitchen",
-  other: "Other",
-};
-
+// Record<ToolCondition, ...> makes TypeScript fail if a condition is added in the
+// backend without a label here. Category labels live in the database instead.
 export const CONDITION_LABELS: Record<ToolCondition, string> = {
   new: "New",
   good: "Good",

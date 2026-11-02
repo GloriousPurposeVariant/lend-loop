@@ -1,24 +1,24 @@
 "use client";
 
 import { api } from "@lendloop/core/convex/_generated/api";
+import type { Id } from "@lendloop/core/convex/_generated/dataModel";
 import {
-  TOOL_CATEGORIES,
   TOOL_CONDITIONS,
   TOOL_LIMITS,
-  type ToolCategory,
   type ToolCondition,
 } from "@lendloop/core/convex/lib/toolFields";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useState, type FormEvent } from "react";
 import { getErrorMessage } from "@/lib/errors";
-import { CATEGORY_LABELS, CONDITION_LABELS } from "@/lib/labels";
+import { CONDITION_LABELS } from "@/lib/labels";
 
 const inputClass = "mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm";
 
 export function NewToolForm() {
+  const categories = useQuery(api.categories.listActive);
   const createTool = useMutation(api.tools.create);
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<ToolCategory>(TOOL_CATEGORIES[0]);
+  const [categoryId, setCategoryId] = useState<Id<"categories"> | "">("");
   const [condition, setCondition] = useState<ToolCondition>("good");
   const [description, setDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -26,10 +26,14 @@ export function NewToolForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (categoryId === "") {
+      setError("Choose a category.");
+      return;
+    }
     setIsSaving(true);
     setError(null);
     try {
-      await createTool({ name, category, condition, description });
+      await createTool({ name, categoryId, condition, description });
       setName("");
       setDescription("");
     } catch (e) {
@@ -37,6 +41,18 @@ export function NewToolForm() {
     } finally {
       setIsSaving(false);
     }
+  }
+
+  if (categories === undefined) {
+    return <p className="text-sm text-gray-500">Loading categories…</p>;
+  }
+
+  if (categories.length === 0) {
+    return (
+      <p className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-gray-500">
+        No categories yet. An admin needs to add some before tools can be listed.
+      </p>
+    );
   }
 
   return (
@@ -57,13 +73,17 @@ export function NewToolForm() {
         <label className="block text-sm font-medium">
           Category
           <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as ToolCategory)}
+            required
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value as Id<"categories">)}
             className={inputClass}
           >
-            {TOOL_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {CATEGORY_LABELS[c]}
+            <option value="" disabled>
+              Choose a category
+            </option>
+            {categories.map((c) => (
+              <option key={c._id} value={c._id}>
+                {c.label}
               </option>
             ))}
           </select>

@@ -5,7 +5,7 @@ import type { Id } from "@lendloop/core/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { getErrorMessage } from "@/lib/errors";
-import { CATEGORY_LABELS, CONDITION_LABELS } from "@/lib/labels";
+import { CONDITION_LABELS } from "@/lib/labels";
 
 export function MyListings() {
   const tools = useQuery(api.tools.listMine);
@@ -49,7 +49,7 @@ export function MyListings() {
             <div>
               <p className="font-medium">{tool.name}</p>
               <p className="text-sm text-gray-500">
-                {CATEGORY_LABELS[tool.category]} · {CONDITION_LABELS[tool.condition]}
+                {tool.categoryLabel} · {CONDITION_LABELS[tool.condition]}
               </p>
               {tool.description && <p className="mt-1 text-sm text-gray-700">{tool.description}</p>}
             </div>
