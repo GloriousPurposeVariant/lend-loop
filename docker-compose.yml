@@ -32,5 +32,57 @@ services:
       convex-backend:
         condition: service_healthy
 
+  # Runs the LendLoop automations (n8n/workflows). UI: http://localhost:5678
+  n8n:
+    image: n8nio/n8n@sha256:c72fa9f1bd9b59626deeb284824c0495625c3f6d894d395d27e241bf192d9900 # 2.44.4
+    stop_grace_period: 10s
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+      # Workflow and credential files from the repo, for `npm run n8n:import`.
+      - ./n8n:/lendloop:ro
+    environment:
+      # Encrypts the credentials n8n stores. Losing it makes them unreadable.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?set N8N_ENCRYPTION_KEY in .env}
+      # Loan dates are UTC calendar days, so the schedule runs on UTC too.
+      GENERIC_TIMEZONE: UTC
+      TZ: UTC
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      # Plain http on localhost; browsers would drop a secure-only login cookie.
+      N8N_SECURE_COOKIE: "false"
+      # The Code nodes compute HMAC signatures with Node's crypto module...
+      NODE_FUNCTION_ALLOW_BUILTIN: crypto
+      # ...and read the LENDLOOP_* settings below with $env.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # Same values as the Convex deployment's N8N_OUTBOUND_SECRET / N8N_INBOUND_SECRET.
+      LENDLOOP_EVENTS_SECRET: ${N8N_OUTBOUND_SECRET:?set N8N_OUTBOUND_SECRET in .env}
+      LENDLOOP_REQUESTS_SECRET: ${N8N_INBOUND_SECRET:?set N8N_INBOUND_SECRET in .env}
+      # Service names work as host names inside this Compose network.
+      LENDLOOP_CONVEX_SITE_URL: http://convex-backend:3211
+      LENDLOOP_APP_URL: http://localhost:3000
+    healthcheck:
+      test: wget -qO- http://localhost:5678/healthz
+      interval: 5s
+      start_period: 20s
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+
+  # Catches every email n8n sends, so nothing reaches a real inbox. Inbox: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387 # v1.31.6
+    stop_grace_period: 10s
+    ports:
+      - "127.0.0.1:8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      start_period: 5s
+
 volumes:
   convex-data:
+  n8n-data:
