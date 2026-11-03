@@ -15,6 +15,8 @@
     "dev:web": "npm run dev -w @lendloop/web",
     "dev:core": "npm run dev -w @lendloop/core",
     "categories:seed": "npm run categories:seed -w @lendloop/core",
+    "seed": "npm run seed -w @lendloop/core",
+    "seed:clear": "npm run seed:clear -w @lendloop/core",
     "lint": "npm run lint -w @lendloop/web",
     "typecheck": "npm run typecheck --workspaces",
     "test": "npm run test -w @lendloop/core",

@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "convex dev",
     "categories:seed": "convex run categories:seed",
+    "seed": "convex run seed:run",
+    "seed:clear": "convex run seed:clear",
     "typecheck": "tsc -p convex/tsconfig.json",
     "test": "vitest run"
   },
