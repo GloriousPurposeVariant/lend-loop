@@ -4,11 +4,13 @@ import { api } from "@lendloop/core/convex/_generated/api";
 import type { Id } from "@lendloop/core/convex/_generated/dataModel";
 import {
   TOOL_CONDITIONS,
+  TOOL_IMAGE_LIMITS,  
   TOOL_LIMITS,
   type ToolCondition,
 } from "@lendloop/core/convex/lib/toolFields";
 import { useMutation, useQuery } from "convex/react";
 import { useState, type FormEvent } from "react";
+import { checkToolPhotos, useUploadToolPhotos } from "@/hooks/useUploadToolPhotos";
 import { getErrorMessage } from "@/lib/errors";
 import { CONDITION_LABELS } from "@/lib/labels";
 import {
@@ -27,6 +29,10 @@ export function NewToolForm() {
   const [categoryId, setCategoryId] = useState<Id<"categories"> | "">("");
   const [condition, setCondition] = useState<ToolCondition>("good");
   const [description, setDescription] = useState("");
+  const [photos, setPhotos] = useState<File[]>([]);
+  // A file input cannot be cleared from state; changing its key replaces it with an empty one.
+  const [photoInputKey, setPhotoInputKey] = useState(0);
+  const uploadToolPhotos = useUploadToolPhotos();
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,14 +42,31 @@ export function NewToolForm() {
       setError("Choose a category.");
       return;
     }
+    // Check photos before creating the tool, so a bad file does not leave a half-done listing.
+    const photoProblem = checkToolPhotos(photos, 0);
+    if (photoProblem !== null) {
+      setError(photoProblem);
+      return;
+    }
     setIsSaving(true);
     setError(null);
+    let toolId: Id<"tools">;
     try {
-      await createTool({ name, categoryId, condition, description });
+      toolId = await createTool({ name, categoryId, condition, description });
       setName("");
       setDescription("");
+      setPhotos([]);
+      setPhotoInputKey((key) => key + 1);
     } catch (e) {
       setError(getErrorMessage(e));
+      setIsSaving(false);
+      return;
+    }
+    try {
+      // Still the photos picked before the reset above: state changes apply on the next render.
+      await uploadToolPhotos(toolId, photos, 0);
+    } catch (e) {
+      setError(`Your tool is listed, but a photo failed: ${getErrorMessage(e)} Add photos below.`);
     } finally {
       setIsSaving(false);
     }
@@ -115,6 +138,20 @@ export function NewToolForm() {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           className={inputStyles}
+        />
+      </label>
+      <label className="block text-sm font-medium">
+        Photos{" "}
+        <span className="font-normal text-gray-500">
+          (optional, up to {TOOL_IMAGE_LIMITS.maxPerTool}, JPEG, PNG or WebP)
+        </span>
+        <input
+          key={photoInputKey}
+          type="file"
+          accept={TOOL_IMAGE_LIMITS.contentTypes.join(",")}
+          multiple
+          onChange={(e) => setPhotos(Array.from(e.target.files ?? []))}
+          className="mt-1 block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border file:border-gray-300 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-gray-50"
         />
       </label>
       <ErrorText message={error} />

@@ -7,6 +7,7 @@ import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
 import { RequestForm } from "@/components/RequestForm";
+import { ToolPhotoGallery } from "@/components/ToolPhotoGallery";
 import {
   buttonStyles,
   cardStyles,
@@ -119,6 +120,9 @@ export function ToolBrowser() {
         <ul className="grid gap-4 md:grid-cols-2">
           {results.map((tool) => (
             <li key={tool._id} className={`${cardStyles} flex flex-col p-5`}>
+              <div className="mb-4">
+                <ToolPhotoGallery name={tool.name} images={tool.images} />
+              </div>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-lg font-semibold">{tool.name}</p>

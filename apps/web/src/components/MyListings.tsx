@@ -4,6 +4,7 @@ import { api } from "@lendloop/core/convex/_generated/api";
 import type { Id } from "@lendloop/core/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
+import { ToolPhotoManager } from "@/components/ToolPhotoManager";
 import { buttonStyles, cardStyles, EmptyState, ErrorText, ListSkeleton } from "@/components/ui";
 import { getErrorMessage } from "@/lib/errors";
 import { CONDITION_LABELS } from "@/lib/labels";
@@ -45,6 +46,7 @@ export function MyListings() {
                 {tool.categoryLabel} · {CONDITION_LABELS[tool.condition]}
               </p>
               {tool.description && <p className="mt-1 text-sm text-gray-700">{tool.description}</p>}
+              <ToolPhotoManager toolId={tool._id} name={tool.name} images={tool.images} />
             </div>
             <button
               type="button"
