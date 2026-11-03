@@ -11,8 +11,14 @@ import { useMutation, useQuery } from "convex/react";
 import { useState, type FormEvent } from "react";
 import { getErrorMessage } from "@/lib/errors";
 import { CONDITION_LABELS } from "@/lib/labels";
-
-const inputClass = "mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm";
+import {
+  buttonStyles,
+  cardStyles,
+  EmptyState,
+  ErrorText,
+  inputStyles,
+  ListSkeleton,
+} from "@/components/ui";
 
 export function NewToolForm() {
   const categories = useQuery(api.categories.listActive);
@@ -44,19 +50,17 @@ export function NewToolForm() {
   }
 
   if (categories === undefined) {
-    return <p className="text-sm text-gray-500">Loading categories…</p>;
+    return <ListSkeleton rows={1} />;
   }
 
   if (categories.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-gray-500">
-        No categories yet. An admin needs to add some before tools can be listed.
-      </p>
+      <EmptyState title="No categories yet. An admin needs to add some before tools can be listed." />
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-gray-200 p-4">
+    <form onSubmit={handleSubmit} className={`${cardStyles} space-y-4 p-5`}>
       <h2 className="text-lg font-semibold">List a tool</h2>
       <label className="block text-sm font-medium">
         Name
@@ -66,7 +70,7 @@ export function NewToolForm() {
           maxLength={TOOL_LIMITS.nameMax}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className={inputClass}
+          className={inputStyles}
         />
       </label>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -76,7 +80,7 @@ export function NewToolForm() {
             required
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value as Id<"categories">)}
-            className={inputClass}
+            className={inputStyles}
           >
             <option value="" disabled>
               Choose a category
@@ -93,7 +97,7 @@ export function NewToolForm() {
           <select
             value={condition}
             onChange={(e) => setCondition(e.target.value as ToolCondition)}
-            className={inputClass}
+            className={inputStyles}
           >
             {TOOL_CONDITIONS.map((c) => (
               <option key={c} value={c}>
@@ -110,19 +114,11 @@ export function NewToolForm() {
           maxLength={TOOL_LIMITS.descriptionMax}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className={inputClass}
+          className={inputStyles}
         />
       </label>
-      {error !== null && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
-      <button
-        type="submit"
-        disabled={isSaving}
-        className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-      >
+      <ErrorText message={error} />
+      <button type="submit" disabled={isSaving} className={buttonStyles.primary}>
         {isSaving ? "Saving…" : "List tool"}
       </button>
     </form>

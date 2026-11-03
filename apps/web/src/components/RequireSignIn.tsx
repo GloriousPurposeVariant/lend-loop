@@ -2,6 +2,7 @@
 
 import { SignInButton } from "@clerk/nextjs";
 import type { ReactNode } from "react";
+import { buttonStyles, EmptyState, ErrorText, ListSkeleton } from "@/components/ui";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 // A convenience for the UI only. Convex still checks the caller on every call,
@@ -11,26 +12,18 @@ export function RequireSignIn({ children }: { children: ReactNode }) {
 
   switch (state.status) {
     case "loading":
-      return <p className="text-sm text-gray-500">Loading your account…</p>;
+      return <ListSkeleton />;
     case "error":
-      return (
-        <p role="alert" className="text-sm text-red-600">
-          {state.message}
-        </p>
-      );
+      return <ErrorText message={state.message} />;
     case "signedOut":
       return (
-        <div className="rounded-lg border border-gray-200 p-6 text-center">
-          <p className="text-gray-700">Sign in to see this page.</p>
+        <EmptyState title="Sign in to see this page.">
           <SignInButton mode="modal">
-            <button
-              type="button"
-              className="mt-4 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
-            >
+            <button type="button" className={buttonStyles.primary}>
               Sign in to lend or borrow
             </button>
           </SignInButton>
-        </div>
+        </EmptyState>
       );
     case "ready":
       return children;
