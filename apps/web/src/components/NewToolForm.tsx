@@ -4,7 +4,7 @@ import { api } from "@lendloop/core/convex/_generated/api";
 import type { Id } from "@lendloop/core/convex/_generated/dataModel";
 import {
   TOOL_CONDITIONS,
-  TOOL_IMAGE_LIMITS,  
+  TOOL_IMAGE_LIMITS,
   TOOL_LIMITS,
   type ToolCondition,
 } from "@lendloop/core/convex/lib/toolFields";
