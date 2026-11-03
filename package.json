@@ -22,9 +22,15 @@
     "test": "npm run test -w @lendloop/core",
     "build": "npm run build -w @lendloop/web",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*": "prettier --write --ignore-unknown"
   },
   "devDependencies": {
+    "husky": "9.1.7",
+    "lint-staged": "17.6.0",
     "prettier": "3.9.10"
   }
 }
