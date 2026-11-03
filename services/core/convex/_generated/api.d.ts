@@ -10,19 +10,24 @@
 
 import type * as categories from "../categories.js";
 import type * as crons from "../crons.js";
+import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_categories from "../lib/categories.js";
 import type * as lib_categoryFields from "../lib/categoryFields.js";
 import type * as lib_dates from "../lib/dates.js";
 import type * as lib_errors from "../lib/errors.js";
+import type * as lib_events from "../lib/events.js";
 import type * as lib_loans from "../lib/loans.js";
+import type * as lib_signing from "../lib/signing.js";
 import type * as lib_toolFields from "../lib/toolFields.js";
 import type * as lib_toolImages from "../lib/toolImages.js";
 import type * as loans from "../loans.js";
+import type * as n8n from "../n8n.js";
 import type * as seed from "../seed.js";
 import type * as toolImages from "../toolImages.js";
 import type * as tools from "../tools.js";
 import type * as users from "../users.js";
+import type * as webhooks from "../webhooks.js";
 
 import type {
   ApiFromModules,
@@ -33,19 +38,24 @@ import type {
 declare const fullApi: ApiFromModules<{
   categories: typeof categories;
   crons: typeof crons;
+  http: typeof http;
   "lib/auth": typeof lib_auth;
   "lib/categories": typeof lib_categories;
   "lib/categoryFields": typeof lib_categoryFields;
   "lib/dates": typeof lib_dates;
   "lib/errors": typeof lib_errors;
+  "lib/events": typeof lib_events;
   "lib/loans": typeof lib_loans;
+  "lib/signing": typeof lib_signing;
   "lib/toolFields": typeof lib_toolFields;
   "lib/toolImages": typeof lib_toolImages;
   loans: typeof loans;
+  n8n: typeof n8n;
   seed: typeof seed;
   toolImages: typeof toolImages;
   tools: typeof tools;
   users: typeof users;
+  webhooks: typeof webhooks;
 }>;
 
 /**
