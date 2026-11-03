@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { addDays, rangesOverlap, type DateRange } from "./dates";
+import { emitLoanEvent } from "./events";
 
 // Loan rules shared by loans.ts and tools.ts.
 
@@ -52,6 +53,7 @@ export async function declinePendingRequests(
       declineReason: reason,
       decidedAt: now,
     });
+    await emitLoanEvent(ctx, "loan.declined", loan._id);
   }
   return toDecline.length;
 }

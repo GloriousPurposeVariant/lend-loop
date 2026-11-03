@@ -15,6 +15,35 @@ export const loanStatusValidator = v.union(
 // Why a request was declined without the lender pressing "Decline".
 export const declineReasonValidator = v.union(v.literal("conflict"), v.literal("toolRemoved"));
 
+// Loan changes we tell n8n about.
+export const loanEventTypeValidator = v.union(
+  v.literal("loan.requested"),
+  v.literal("loan.approved"),
+  v.literal("loan.declined"),
+  v.literal("loan.cancelled"),
+  v.literal("loan.returned"),
+);
+
+// pending: not delivered yet (maybe retrying). skipped: no n8n URL configured.
+export const deliveryStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("delivered"),
+  v.literal("failed"),
+  v.literal("skipped"),
+);
+
+const personValidator = v.object({ name: v.string(), email: v.string() });
+
+// What n8n needs to write an email about a loan. Emails go to n8n, our own service.
+export const loanEventDataValidator = v.object({
+  toolName: v.string(),
+  startDate: v.string(),
+  endDate: v.string(),
+  declineReason: v.optional(declineReasonValidator),
+  lender: personValidator,
+  borrower: personValidator,
+});
+
 export default defineSchema({
   users: defineTable({
     // "<issuer>|<subject>" from the verified Clerk JWT. Never sent by the client.
@@ -75,9 +104,35 @@ export default defineSchema({
     declineReason: v.optional(declineReasonValidator),
     decidedAt: v.optional(v.number()),
     returnedAt: v.optional(v.number()),
+    // "YYYY-MM-DD" of the last overdue reminder n8n reported, so it sends at most one a day.
+    lastReminderOn: v.optional(v.string()),
   })
     // Overlap checks: approved (or pending) loans of a tool that end on or after a date.
     .index("by_tool_and_status_and_end", ["toolId", "status", "endDate"])
+    // Overdue loans: approved loans that ended before today.
+    .index("by_status_and_end", ["status", "endDate"])
     .index("by_borrower", ["borrowerId"])
     .index("by_lender", ["lenderId"]),
+
+  // Outbox: one row per loan change for n8n, written in the same transaction as the
+  // change itself, so an event is never lost and never sent for a change that failed.
+  outboundEvents: defineTable({
+    type: loanEventTypeValidator,
+    loanId: v.id("loans"),
+    // A snapshot at the time of the change, so a retry sends exactly the same thing.
+    data: loanEventDataValidator,
+    status: deliveryStatusValidator,
+    attempts: v.number(),
+    lastError: v.optional(v.string()),
+    nextAttemptAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+  })
+    .index("by_loan", ["loanId"])
+    .index("by_status", ["status"]),
+
+  // Ids of requests n8n has sent us. A repeated id is answered without acting twice.
+  inboundEvents: defineTable({
+    eventId: v.string(),
+    type: v.string(),
+  }).index("by_event_id", ["eventId"]),
 });

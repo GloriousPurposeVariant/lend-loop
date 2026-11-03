@@ -5,6 +5,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
 import { requireAdmin, requireOwner, requireUser } from "./lib/auth";
 import { earliestStartDate, validateLoanDates } from "./lib/dates";
 import { appError } from "./lib/errors";
+import { emitLoanEvent } from "./lib/events";
 import { declinePendingRequests, findApprovedOverlap, loansEndingFrom } from "./lib/loans";
 import { declineReasonValidator, loanStatusValidator } from "./schema";
 
@@ -84,7 +85,7 @@ export const request = mutation({
       throw appError("INVALID_INPUT", "You already have a pending request for this tool.");
     }
 
-    return await ctx.db.insert("loans", {
+    const loanId = await ctx.db.insert("loans", {
       toolId: tool._id,
       lenderId: tool.ownerId,
       borrowerId: user._id,
@@ -92,6 +93,8 @@ export const request = mutation({
       endDate: range.endDate,
       status: "pending",
     });
+    await emitLoanEvent(ctx, "loan.requested", loanId);
+    return loanId;
   },
 });
 
@@ -121,6 +124,7 @@ export const approve = mutation({
     }
 
     await ctx.db.patch("loans", loan._id, { status: "approved", decidedAt: Date.now() });
+    await emitLoanEvent(ctx, "loan.approved", loan._id);
     // The approved loan now blocks these dates, so overlapping requests cannot succeed.
     await declinePendingRequests(ctx, loan.toolId, "conflict", loan);
     return null;
@@ -137,6 +141,7 @@ export const decline = mutation({
     requireOwner(user, loan.lenderId);
     requireStatus(loan, "pending");
     await ctx.db.patch("loans", loan._id, { status: "declined", decidedAt: Date.now() });
+    await emitLoanEvent(ctx, "loan.declined", loan._id);
     return null;
   },
 });
@@ -151,6 +156,7 @@ export const cancel = mutation({
     requireOwner(user, loan.borrowerId);
     requireStatus(loan, "pending");
     await ctx.db.patch("loans", loan._id, { status: "cancelled", decidedAt: Date.now() });
+    await emitLoanEvent(ctx, "loan.cancelled", loan._id);
     return null;
   },
 });
@@ -165,6 +171,7 @@ export const markReturned = mutation({
     requireOwner(user, loan.lenderId);
     requireStatus(loan, "approved");
     await ctx.db.patch("loans", loan._id, { status: "returned", returnedAt: Date.now() });
+    await emitLoanEvent(ctx, "loan.returned", loan._id);
     return null;
   },
 });

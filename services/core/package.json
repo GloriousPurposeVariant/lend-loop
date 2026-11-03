@@ -7,6 +7,7 @@
     "categories:seed": "convex run categories:seed",
     "seed": "convex run seed:run",
     "seed:clear": "convex run seed:clear",
+    "n8n:request": "node scripts/n8n-request.mjs",
     "typecheck": "tsc -p convex/tsconfig.json",
     "test": "vitest run"
   },
