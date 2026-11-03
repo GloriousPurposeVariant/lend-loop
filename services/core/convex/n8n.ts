@@ -1,6 +1,8 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
+import { addActivity } from "./lib/activity";
 import { toIsoDate } from "./lib/dates";
+import { loanRoleValidator } from "./schema";
 
 // What n8n can ask of us, through the signed endpoints in http.ts. Internal, so
 // the only way in from outside is a request that passed the signature check.
@@ -47,30 +49,61 @@ export const overdueLoans = internalQuery({
   },
 });
 
+const reportResultValidator = v.union(
+  v.literal("processed"),
+  v.literal("duplicate"),
+  v.literal("ignored"),
+);
+
 /**
- * n8n reports that it sent an overdue reminder. Idempotent: a repeated eventId
- * (n8n retrying after a timeout, say) is answered "duplicate" and changes nothing.
+ * Records an n8n event id, so a repeat (n8n retrying after a timeout, say) is
+ * answered "duplicate" and changes nothing. Returns the loan it is about, or a
+ * result to answer with straight away.
  */
+async function firstTimeForLoan(ctx: MutationCtx, eventId: string, type: string, loanId: string) {
+  const seen = await ctx.db
+    .query("inboundEvents")
+    .withIndex("by_event_id", (q) => q.eq("eventId", eventId))
+    .unique();
+  if (seen !== null) {
+    return { result: "duplicate" as const };
+  }
+  await ctx.db.insert("inboundEvents", { eventId, type });
+
+  // The id comes from outside, so check it is really a loan id first.
+  const id = ctx.db.normalizeId("loans", loanId);
+  const loan = id === null ? null : await ctx.db.get("loans", id);
+  return loan === null ? { result: "ignored" as const } : { loan };
+}
+
+/** n8n reports that it sent an overdue reminder to the borrower. */
 export const recordReminderSent = internalMutation({
   args: { eventId: v.string(), loanId: v.string() },
-  returns: v.union(v.literal("processed"), v.literal("duplicate"), v.literal("ignored")),
+  returns: reportResultValidator,
   handler: async (ctx, args) => {
-    const seen = await ctx.db
-      .query("inboundEvents")
-      .withIndex("by_event_id", (q) => q.eq("eventId", args.eventId))
-      .unique();
-    if (seen !== null) {
-      return "duplicate";
+    const first = await firstTimeForLoan(ctx, args.eventId, "reminder.sent", args.loanId);
+    if (first.result) {
+      return first.result;
     }
-    await ctx.db.insert("inboundEvents", { eventId: args.eventId, type: "reminder.sent" });
-
-    // The id comes from outside, so check it is really a loan id first.
-    const loanId = ctx.db.normalizeId("loans", args.loanId);
-    const loan = loanId === null ? null : await ctx.db.get("loans", loanId);
-    if (loan === null || loan.status !== "approved") {
+    if (first.loan.status !== "approved") {
       return "ignored";
     }
-    await ctx.db.patch("loans", loan._id, { lastReminderOn: toIsoDate(Date.now()) });
+    await ctx.db.patch("loans", first.loan._id, { lastReminderOn: toIsoDate(Date.now()) });
+    await addActivity(ctx, first.loan, "reminder.sent", ["borrower", "lender"]);
+    return "processed";
+  },
+});
+
+/** n8n reports that it emailed the lender or the borrower about a loan. */
+export const recordEmailSent = internalMutation({
+  args: { eventId: v.string(), loanId: v.string(), recipient: loanRoleValidator },
+  returns: reportResultValidator,
+  handler: async (ctx, args) => {
+    const first = await firstTimeForLoan(ctx, args.eventId, "email.sent", args.loanId);
+    if (first.result) {
+      return first.result;
+    }
+    await addActivity(ctx, first.loan, "email.sent", [args.recipient]);
     return "processed";
   },
 });

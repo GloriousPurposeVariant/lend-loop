@@ -143,6 +143,13 @@ async function clearSeedData(ctx: MutationCtx) {
         for (const event of events) {
           await ctx.db.delete("outboundEvents", event._id);
         }
+        const entries = await ctx.db
+          .query("activity")
+          .withIndex("by_loan", (q) => q.eq("loanId", loan._id))
+          .collect();
+        for (const entry of entries) {
+          await ctx.db.delete("activity", entry._id);
+        }
         await ctx.db.delete("loans", loan._id);
         loans++;
       }

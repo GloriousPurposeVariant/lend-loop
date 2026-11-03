@@ -47,8 +47,11 @@ http.route({
     return Response.json({ loans });
   }),
 });
-
-/** n8n reports something it did. Body: { "id": "...", "type": "reminder.sent", "loanId": "..." } */
+/**
+ * n8n reports something it did. Body: { "id": "...", "type": ..., "loanId": "..." }
+ *   reminder.sent  an overdue reminder went to the borrower
+ *   email.sent     an email about a loan went to "recipient": "lender" | "borrower"
+ */
 http.route({
   path: "/n8n/events",
   method: "POST",
@@ -63,16 +66,28 @@ http.route({
     } catch {
       return Response.json({ error: "Body must be JSON." }, { status: 400 });
     }
-    const { id, type, loanId } = (event ?? {}) as Record<string, unknown>;
+    const { id, type, loanId, recipient } = (event ?? {}) as Record<string, unknown>;
     if (typeof id !== "string" || id.length === 0 || id.length > 200) {
       return Response.json({ error: "id must be a non-empty string." }, { status: 400 });
     }
-    if (type !== "reminder.sent" || typeof loanId !== "string") {
-      return Response.json({ error: "Unknown event type." }, { status: 400 });
+    if (typeof loanId !== "string") {
+      return Response.json({ error: "loanId must be a string." }, { status: 400 });
     }
-    const status = await ctx.runMutation(internal.n8n.recordReminderSent, { eventId: id, loanId });
-    return Response.json({ status });
+    if (type === "reminder.sent") {
+      const status = await ctx.runMutation(internal.n8n.recordReminderSent, {
+        eventId: id,
+        loanId,
+      });
+      return Response.json({ status });
+    }
+    if (type === "email.sent" && (recipient === "lender" || recipient === "borrower")) {
+      const status = await ctx.runMutation(internal.n8n.recordEmailSent, {
+        eventId: id,
+        loanId,
+        recipient,
+      });
+      return Response.json({ status });
+    }
+    return Response.json({ error: "Unknown event type." }, { status: 400 });
   }),
 });
-
-export default http;
