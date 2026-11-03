@@ -32,9 +32,13 @@ const STEPS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["week", 7],
 ];
 
-/** A timestamp as "just now", "5 minutes ago", "yesterday"... in the user's locale. */
+/**
+ * A timestamp relative to now, in the user's locale: "just now", "5 minutes ago",
+ * "yesterday", or for future times "in 2 minutes".
+ */
 export function formatTimeAgo(ms: number, now = Date.now()): string {
-  let value = (now - ms) / 1000;
+  const seconds = (ms - now) / 1000; // negative for the past
+  let value = Math.abs(seconds);
   if (value < 60) {
     return "just now";
   }
@@ -46,5 +50,5 @@ export function formatTimeAgo(ms: number, now = Date.now()): string {
     value /= size;
     unit = next;
   }
-  return relative.format(-Math.floor(value), unit);
+  return relative.format(Math.sign(seconds) * Math.floor(value), unit);
 }
