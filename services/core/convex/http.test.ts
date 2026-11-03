@@ -7,6 +7,7 @@ import schema from "./schema";
 import { alice, bob, modules, seedCategory, type TestConvex } from "./test.setup";
 
 const SECRET = "inbound-secret";
+const firstPage = { paginationOpts: { numItems: 20, cursor: null } };
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -142,5 +143,41 @@ describe("/n8n/events", () => {
 
     expect(await unknown.json()).toEqual({ status: "ignored" });
     expect([noId.status, badType.status]).toEqual([400, 400]);
+  });
+
+  test("a reminder appears in both people's activity feeds", async () => {
+    const t = convexTest(schema, modules);
+    const { overdue } = await setup(t);
+    await signedPost(t, "/n8n/events", { id: "r1", type: "reminder.sent", loanId: overdue });
+
+    const feeds = await Promise.all(
+      [alice, bob].map((identity) =>
+        t.withIdentity(identity).query(api.activity.listMine, firstPage),
+      ),
+    );
+    expect(feeds.map((feed) => feed.page.map((entry) => [entry.kind, entry.role]))).toEqual([
+      [["reminder.sent", "lender"]],
+      [["reminder.sent", "borrower"]],
+    ]);
+  });
+
+  test("an email report is added to the recipient's feed once", async () => {
+    const t = convexTest(schema, modules);
+    const { current } = await setup(t);
+    const event = { id: "email:evt1", type: "email.sent", loanId: current, recipient: "borrower" };
+
+    const first = await signedPost(t, "/n8n/events", event);
+    const repeat = await signedPost(t, "/n8n/events", event);
+    const badRecipient = await signedPost(t, "/n8n/events", { ...event, recipient: "everyone" });
+
+    expect(await first.json()).toEqual({ status: "processed" });
+    expect(await repeat.json()).toEqual({ status: "duplicate" });
+    expect(badRecipient.status).toBe(400);
+    const bobFeed = await t.withIdentity(bob).query(api.activity.listMine, firstPage);
+    const aliceFeed = await t.withIdentity(alice).query(api.activity.listMine, firstPage);
+    expect(bobFeed.page).toMatchObject([
+      { kind: "email.sent", role: "borrower", otherName: "Alice", toolName: "Cordless drill" },
+    ]);
+    expect(aliceFeed.page).toEqual([]);
   });
 });

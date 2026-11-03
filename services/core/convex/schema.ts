@@ -32,6 +32,16 @@ export const deliveryStatusValidator = v.union(
   v.literal("skipped"),
 );
 
+// What can appear in a member's activity feed: the loan changes above, plus what n8n
+// reports doing (an email about a loan, an overdue reminder).
+export const activityKindValidator = v.union(
+  ...loanEventTypeValidator.members,
+  v.literal("email.sent"),
+  v.literal("reminder.sent"),
+);
+
+export const loanRoleValidator = v.union(v.literal("lender"), v.literal("borrower"));
+
 const personValidator = v.object({ name: v.string(), email: v.string() });
 
 // What n8n needs to write an email about a loan. Emails go to n8n, our own service.
@@ -135,4 +145,21 @@ export default defineSchema({
     eventId: v.string(),
     type: v.string(),
   }).index("by_event_id", ["eventId"]),
+
+  // Activity feeds: one row per person who should see an entry, written in the same
+  // transaction as the change. Names are copied, so the feed reads as it happened.
+  activity: defineTable({
+    userId: v.id("users"),
+    loanId: v.id("loans"),
+    kind: activityKindValidator,
+    // The feed owner's side of the loan, and the person on the other side.
+    role: loanRoleValidator,
+    otherName: v.string(),
+    toolName: v.string(),
+    startDate: v.string(),
+    endDate: v.string(),
+    declineReason: v.optional(declineReasonValidator),
+  })
+    .index("by_user", ["userId"])
+    .index("by_loan", ["loanId"]),
 });

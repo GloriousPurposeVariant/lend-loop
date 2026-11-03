@@ -12,6 +12,7 @@ const NAV_LINKS = [
   { href: "/my-listings", label: "My listings" },
   { href: "/requests", label: "My requests" },
   { href: "/incoming", label: "Incoming" },
+  { href: "/activity", label: "Activity" },
 ] as const;
 
 function NavLink({ href, label }: { href: string; label: string }) {
