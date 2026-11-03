@@ -23,3 +23,28 @@ export function formatDateRange(startDate: string, endDate: string): string {
   }
   return `${start} – ${formatter.format(new Date(`${endDate}T00:00:00Z`))}`;
 }
+
+const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+const STEPS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ["minute", 60],
+  ["hour", 60],
+  ["day", 24],
+  ["week", 7],
+];
+
+/** A timestamp as "just now", "5 minutes ago", "yesterday"... in the user's locale. */
+export function formatTimeAgo(ms: number, now = Date.now()): string {
+  let value = (now - ms) / 1000;
+  if (value < 60) {
+    return "just now";
+  }
+  let unit: Intl.RelativeTimeFormatUnit = "second";
+  for (const [next, size] of STEPS) {
+    if (value < size) {
+      break;
+    }
+    value /= size;
+    unit = next;
+  }
+  return relative.format(-Math.floor(value), unit);
+}
