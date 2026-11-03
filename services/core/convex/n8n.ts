@@ -107,3 +107,28 @@ export const recordEmailSent = internalMutation({
     return "processed";
   },
 });
+
+/** n8n's Error Workflow reports a failed run of one of our workflows. */
+export const recordWorkflowFailure = internalMutation({
+  args: {
+    eventId: v.string(),
+    workflowName: v.string(),
+    nodeName: v.optional(v.string()),
+    message: v.string(),
+    executionId: v.string(),
+    executionUrl: v.optional(v.string()),
+  },
+  returns: v.union(v.literal("processed"), v.literal("duplicate")),
+  handler: async (ctx, { eventId, ...failure }) => {
+    const seen = await ctx.db
+      .query("inboundEvents")
+      .withIndex("by_event_id", (q) => q.eq("eventId", eventId))
+      .unique();
+    if (seen !== null) {
+      return "duplicate";
+    }
+    await ctx.db.insert("inboundEvents", { eventId, type: "workflow.failed" });
+    await ctx.db.insert("workflowFailures", failure);
+    return "processed";
+  },
+});

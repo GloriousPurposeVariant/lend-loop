@@ -34,6 +34,29 @@ async function readSignedBody(
   return { body };
 }
 
+/** Checks and trims the fields of a workflow.failed event, or returns null if they are wrong. */
+function workflowFailureFields(fields: Record<string, unknown>) {
+  const { workflowName, nodeName, message, executionId, executionUrl } = fields;
+  if (
+    typeof workflowName !== "string" ||
+    typeof message !== "string" ||
+    typeof executionId !== "string" ||
+    (nodeName !== undefined && typeof nodeName !== "string") ||
+    (executionUrl !== undefined && typeof executionUrl !== "string")
+  ) {
+    return null;
+  }
+  return {
+    workflowName: workflowName.slice(0, 200),
+    nodeName: nodeName?.slice(0, 200),
+    // Error messages can be long; the admin page only needs the start.
+    message: message.slice(0, 2000),
+    executionId: executionId.slice(0, 100),
+    // Shown as a link, so only ever an http(s) address.
+    executionUrl: executionUrl?.startsWith("http") ? executionUrl.slice(0, 500) : undefined,
+  };
+}
+
 /** Overdue loans that still need a reminder today. n8n calls this on a schedule. */
 http.route({
   path: "/n8n/overdue-loans",
@@ -47,11 +70,14 @@ http.route({
     return Response.json({ loans });
   }),
 });
+
 /**
- * n8n reports something it did. Body: { "id": "...", "type": ..., "loanId": "..." }
- *   reminder.sent  an overdue reminder went to the borrower
- *   email.sent     an email about a loan went to "recipient": "lender" | "borrower"
+ * n8n reports something it did. Body: { "id": "...", "type": ..., ... }
+ *   reminder.sent    an overdue reminder went to the borrower of "loanId"
+ *   email.sent       an email about "loanId" went to "recipient": "lender" | "borrower"
+ *   workflow.failed  a run of "workflowName" failed (sent by n8n's Error Workflow)
  */
+
 http.route({
   path: "/n8n/events",
   method: "POST",
@@ -66,9 +92,21 @@ http.route({
     } catch {
       return Response.json({ error: "Body must be JSON." }, { status: 400 });
     }
-    const { id, type, loanId, recipient } = (event ?? {}) as Record<string, unknown>;
+    const fields = (event ?? {}) as Record<string, unknown>;
+    const { id, type, loanId, recipient } = fields;
     if (typeof id !== "string" || id.length === 0 || id.length > 200) {
       return Response.json({ error: "id must be a non-empty string." }, { status: 400 });
+    }
+    if (type === "workflow.failed") {
+      const failure = workflowFailureFields(fields);
+      if (failure === null) {
+        return Response.json({ error: "Invalid workflow.failed event." }, { status: 400 });
+      }
+      const status = await ctx.runMutation(internal.n8n.recordWorkflowFailure, {
+        eventId: id,
+        ...failure,
+      });
+      return Response.json({ status });
     }
     if (typeof loanId !== "string") {
       return Response.json({ error: "loanId must be a string." }, { status: 400 });

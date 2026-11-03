@@ -162,4 +162,13 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_loan", ["loanId"]),
+
+  // Failed n8n runs, reported by the n8n Error Workflow, for the admin Automations page.
+  workflowFailures: defineTable({
+    workflowName: v.string(),
+    nodeName: v.optional(v.string()),
+    message: v.string(),
+    executionId: v.string(),
+    executionUrl: v.optional(v.string()),
+  }),
 });

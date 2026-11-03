@@ -9,6 +9,7 @@
  */
 
 import type * as activity from "../activity.js";
+import type * as automations from "../automations.js";
 import type * as categories from "../categories.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
@@ -39,6 +40,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   activity: typeof activity;
+  automations: typeof automations;
   categories: typeof categories;
   crons: typeof crons;
   http: typeof http;
