@@ -7,6 +7,7 @@ import { appError } from "./lib/errors";
 import { toIsoDate } from "./lib/dates";
 import { declinePendingRequests, toolAvailability } from "./lib/loans";
 import { cleanToolText, TOOL_LIMITS, toolConditionValidator } from "./lib/toolFields";
+import { toolImages, toolImageValidator } from "./lib/toolImages";
 
 // What anyone, signed in or not, may see about a tool. The `returns` validator
 // enforces it: returning any other field makes the query fail.
@@ -23,6 +24,7 @@ const ownToolValidator = v.object({
   categoryLabel: v.string(),
   condition: toolConditionValidator,
   description: v.string(),
+  images: v.array(toolImageValidator),
 });
 
 // What signed-in members see when browsing. Owner email stays private.
@@ -38,6 +40,7 @@ const browseToolValidator = v.object({
   availability: v.union(v.literal("available"), v.literal("onLoan")),
   availableFrom: v.optional(v.string()),
   upcomingBookings: v.array(v.object({ startDate: v.string(), endDate: v.string() })),
+  images: v.array(toolImageValidator),
 });
 
 async function categoryLabel(ctx: QueryCtx, categoryId: Id<"categories">) {
@@ -114,6 +117,7 @@ export const browse = query({
           ownerIsTrustedLender: owner?.isTrustedLender ?? false,
           isMine: tool.ownerId === user._id,
           ...(await toolAvailability(ctx, tool._id, today)),
+          images: await toolImages(ctx, tool._id),
         };
       }),
     );
@@ -141,6 +145,7 @@ export const listMine = query({
         categoryLabel: await categoryLabel(ctx, tool.categoryId),
         condition: tool.condition,
         description: tool.description,
+        images: await toolImages(ctx, tool._id),
       })),
     );
   },

@@ -54,6 +54,13 @@ export default defineSchema({
     .index("by_owner_and_status", ["ownerId", "status"])
     // Browse search: words in the name, narrowed by status and optionally category.
     .searchIndex("search_name", { searchField: "name", filterFields: ["status", "categoryId"] }),
+  // Photos of a tool. The file itself lives in Convex file storage; this row links it.
+  toolImages: defineTable({
+    toolId: v.id("tools"),
+    storageId: v.id("_storage"),
+  })
+    .index("by_tool", ["toolId"])
+    .index("by_storage", ["storageId"]),
 
   // One row per borrow request, from request to return:
   // pending -> approved -> returned, or pending -> declined / cancelled.
