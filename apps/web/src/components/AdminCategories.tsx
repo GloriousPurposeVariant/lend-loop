@@ -5,6 +5,14 @@ import type { Id } from "@lendloop/core/convex/_generated/dataModel";
 import { CATEGORY_LIMITS } from "@lendloop/core/convex/lib/categoryFields";
 import { useMutation, useQuery } from "convex/react";
 import { useState, type FormEvent } from "react";
+import {
+  buttonStyles,
+  cardStyles,
+  EmptyState,
+  ErrorText,
+  inputStyles,
+  ListSkeleton,
+} from "@/components/ui";
 import { getErrorMessage } from "@/lib/errors";
 
 export function AdminCategories() {
@@ -42,12 +50,12 @@ export function AdminCategories() {
   }
 
   if (categories === undefined) {
-    return <p className="text-sm text-gray-500">Loading categories…</p>;
+    return <ListSkeleton />;
   }
 
   return (
     <div className="space-y-6">
-      <form onSubmit={handleCreate} className="flex gap-2">
+      <form onSubmit={handleCreate} className="flex max-w-md items-end gap-2">
         <input
           required
           minLength={CATEGORY_LIMITS.labelMin}
@@ -55,28 +63,20 @@ export function AdminCategories() {
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
           placeholder="New category, e.g. Bikes"
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+          aria-label="New category name"
+          className={inputStyles}
         />
-        <button
-          type="submit"
-          className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
-        >
+        <button type="submit" className={buttonStyles.primary}>
           Add
         </button>
       </form>
 
-      {error !== null && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
+      <ErrorText message={error} />
 
       {categories.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-gray-500">
-          No categories yet. Add one above, or run npm run categories:seed.
-        </p>
+        <EmptyState title="No categories yet. Add one above, or run npm run categories:seed." />
       ) : (
-        <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+        <ul className={`${cardStyles} divide-y divide-gray-100`}>
           {categories.map((c) => (
             <li key={c._id} className="flex items-center justify-between gap-4 px-4 py-3">
               <div>
@@ -85,18 +85,18 @@ export function AdminCategories() {
                 </span>
                 <span className="ml-2 text-xs text-gray-400">{c.slug}</span>
               </div>
-              <div className="flex gap-3 text-sm">
+              <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => handleRename(c._id, c.label)}
-                  className="hover:underline"
+                  className={buttonStyles.secondary}
                 >
                   Rename
                 </button>
                 <button
                   type="button"
                   onClick={() => run(() => setActive({ categoryId: c._id, isActive: !c.isActive }))}
-                  className={c.isActive ? "text-red-600 hover:underline" : "hover:underline"}
+                  className={c.isActive ? buttonStyles.danger : buttonStyles.secondary}
                 >
                   {c.isActive ? "Deactivate" : "Reactivate"}
                 </button>
