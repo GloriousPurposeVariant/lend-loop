@@ -55,7 +55,6 @@ export default defineSchema({
     // Browse search: words in the name, narrowed by status and optionally category.
     .searchIndex("search_name", { searchField: "name", filterFields: ["status", "categoryId"] }),
 
-
   // One row per borrow request, from request to return:
   // pending -> approved -> returned, or pending -> declined / cancelled.
   loans: defineTable({

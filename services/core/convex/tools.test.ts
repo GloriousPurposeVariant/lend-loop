@@ -119,7 +119,7 @@ describe("browse", () => {
     expect(power.page.map((tool) => tool.name)).toEqual(["Cordless drill"]);
     expect(power.page[0]).toMatchObject({ ownerName: "Alice", categoryLabel: "Power tools" });
   });
-  
+
   test("searches by name, together with the category filter, and skips removed tools", async () => {
     const t = convexTest(schema, modules);
     const { toolId, categoryId } = await setup(t);
