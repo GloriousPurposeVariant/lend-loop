@@ -136,6 +136,13 @@ async function clearSeedData(ctx: MutationCtx) {
     for (const loan of [...asBorrower, ...asLender]) {
       // A loan between two seed users appears in both lists; delete it once.
       if ((await ctx.db.get("loans", loan._id)) !== null) {
+        const events = await ctx.db
+          .query("outboundEvents")
+          .withIndex("by_loan", (q) => q.eq("loanId", loan._id))
+          .collect();
+        for (const event of events) {
+          await ctx.db.delete("outboundEvents", event._id);
+        }
         await ctx.db.delete("loans", loan._id);
         loans++;
       }
