@@ -1,3 +1,4 @@
+import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { findUserByTokenIdentifier, getCurrentUser, requireAdmin } from "./lib/auth";
@@ -65,6 +66,29 @@ export const me = query({
       email: user.email,
       role: user.role,
       isTrustedLender: user.isTrustedLender,
+    };
+  },
+});
+
+/** Admin only: every member, A to Z by name, a page at a time. */
+export const listForAdmin = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(currentUserValidator),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const result = await ctx.db
+      .query("users")
+      .withIndex("by_display_name")
+      .paginate(args.paginationOpts);
+    return {
+      ...result,
+      page: result.page.map((user) => ({
+        _id: user._id,
+        displayName: user.displayName,
+        email: user.email,
+        role: user.role,
+        isTrustedLender: user.isTrustedLender,
+      })),
     };
   },
 });

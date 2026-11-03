@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
@@ -119,6 +119,29 @@ describe("browse", () => {
     expect(power.page.map((tool) => tool.name)).toEqual(["Cordless drill"]);
     expect(power.page[0]).toMatchObject({ ownerName: "Alice", categoryLabel: "Power tools" });
   });
+  
+  test("searches by name, together with the category filter, and skips removed tools", async () => {
+    const t = convexTest(schema, modules);
+    const { toolId, categoryId } = await setup(t);
+    const gardenId = await seedCategory(t, "garden");
+    await t
+      .withIdentity(bob)
+      .mutation(api.tools.create, { ...drill(gardenId), name: "Garden drill" });
+    await t.withIdentity(bob).mutation(api.tools.create, { ...drill(gardenId), name: "Rake" });
+
+    const search = (args: { search: string; categoryId?: Id<"categories"> }) =>
+      t
+        .withIdentity(alice)
+        .query(api.tools.browse, { ...firstPage, ...args })
+        .then((result) => result.page.map((tool) => tool.name).sort());
+
+    expect(await search({ search: "drill" })).toEqual(["Cordless drill", "Garden drill"]);
+    expect(await search({ search: "drill", categoryId })).toEqual(["Cordless drill"]);
+    expect(await search({ search: "   " })).toEqual(["Cordless drill", "Garden drill", "Rake"]);
+
+    await t.withIdentity(alice).mutation(api.tools.remove, { toolId });
+    expect(await search({ search: "drill" })).toEqual(["Garden drill"]);
+  });
 });
 
 describe("listMine", () => {
@@ -158,5 +181,39 @@ describe("remove", () => {
     const { toolId } = await setup(t);
     await t.withIdentity(alice).mutation(api.tools.remove, { toolId });
     await expectAppError(t.withIdentity(alice).mutation(api.tools.remove, { toolId }), "NOT_FOUND");
+  });
+});
+
+describe("browse availability", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("shows on-loan tools, when they are back, and upcoming bookings without borrowers", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-02T12:00:00Z"));
+    const t = convexTest(schema, modules);
+    const { toolId } = await setup(t);
+
+    const before = await t.withIdentity(bob).query(api.tools.browse, firstPage);
+    expect(before.page[0]).toMatchObject({ availability: "available", upcomingBookings: [] });
+
+    for (const [startDate, endDate] of [
+      ["2026-11-01", "2026-11-04"],
+      ["2026-11-10", "2026-11-12"],
+    ]) {
+      const loanId = await t
+        .withIdentity(bob)
+        .mutation(api.loans.request, { toolId, startDate, endDate });
+      await t.withIdentity(alice).mutation(api.loans.approve, { loanId });
+    }
+
+    const after = await t.withIdentity(bob).query(api.tools.browse, firstPage);
+    expect(after.page[0]).toMatchObject({
+      availability: "onLoan",
+      availableFrom: "2026-11-05",
+      upcomingBookings: [{ startDate: "2026-11-10", endDate: "2026-11-12" }],
+    });
+    expect(JSON.stringify(after.page[0])).not.toContain("Bob");
   });
 });

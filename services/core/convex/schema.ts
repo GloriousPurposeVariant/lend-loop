@@ -25,7 +25,8 @@ export default defineSchema({
     isTrustedLender: v.boolean(),
   })
     .index("by_token_identifier", ["tokenIdentifier"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_display_name", ["displayName"]),
 
   // Managed by admins. Never deleted, only deactivated, so tools always point at a real row.
   categories: defineTable({
@@ -50,7 +51,10 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_status_and_category", ["status", "categoryId"])
-    .index("by_owner_and_status", ["ownerId", "status"]),
+    .index("by_owner_and_status", ["ownerId", "status"])
+    // Browse search: words in the name, narrowed by status and optionally category.
+    .searchIndex("search_name", { searchField: "name", filterFields: ["status", "categoryId"] }),
+
 
   // One row per borrow request, from request to return:
   // pending -> approved -> returned, or pending -> declined / cancelled.
