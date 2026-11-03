@@ -7,6 +7,7 @@ const TABS = [
   { href: "/admin/loans", label: "Loans" },
   { href: "/admin/users", label: "Members" },
   { href: "/admin/categories", label: "Categories" },
+  { href: "/admin/automations", label: "Automations" },
 ] as const;
 
 export function AdminNav() {

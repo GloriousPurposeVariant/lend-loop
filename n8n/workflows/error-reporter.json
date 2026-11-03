@@ -1,0 +1,81 @@
+{
+  "id": "LendLoopErrors01",
+  "name": "LendLoop: error reporter",
+  "nodes": [
+    {
+      "id": "3f405162-7c8d-4e9f-a0b1-c2d3e4f5a6b7",
+      "name": "A LendLoop workflow failed",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "parameters": {}
+    },
+    {
+      "id": "40516273-8d9e-4fa0-b1c2-d3e4f5a6b7c8",
+      "name": "Sign failure report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "parameters": {
+        "jsCode": "// Reports the failed run to Convex, for the admin Automations page. The id is the\n// failed run's id, so if this report is ever repeated, Convex records it once.\nconst crypto = require('crypto');\nconst { execution, workflow } = $input.first().json;\nconst executionId = String(execution.id ?? Date.now());\nconst body = JSON.stringify({\n  id: `error:${executionId}`,\n  type: 'workflow.failed',\n  workflowName: workflow.name,\n  nodeName: execution.lastNodeExecuted,\n  message: execution.error?.message ?? 'Unknown error',\n  executionId,\n  executionUrl: execution.url,\n});\nconst timestamp = Math.floor(Date.now() / 1000).toString();\nconst signature =\n  'sha256=' +\n  crypto.createHmac('sha256', $env.LENDLOOP_REQUESTS_SECRET).update(`${timestamp}.${body}`).digest('hex');\nreturn [{ json: { body, timestamp, signature } }];\n"
+      }
+    },
+    {
+      "id": "51627384-9eaf-40b1-c2d3-e4f5a6b7c8d9",
+      "name": "Report failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LENDLOOP_CONVEX_SITE_URL }}/n8n/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-LendLoop-Timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "X-LendLoop-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "A LendLoop workflow failed": {
+      "main": [
+        [
+          {
+            "node": "Sign failure report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign failure report": {
+      "main": [
+        [
+          {
+            "node": "Report failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { SIGNATURE_HEADER, sign, TIMESTAMP_HEADER } from "./lib/signing";
 import schema from "./schema";
@@ -179,5 +179,34 @@ describe("/n8n/events", () => {
       { kind: "email.sent", role: "borrower", otherName: "Alice", toolName: "Cordless drill" },
     ]);
     expect(aliceFeed.page).toEqual([]);
+  });
+
+  test("records a failed n8n run once, for admins to see", async () => {
+    const t = convexTest(schema, modules);
+    await setup(t);
+    await t.mutation(internal.users.promoteToAdmin, { email: alice.email });
+    const failure = {
+      id: "error:42",
+      type: "workflow.failed",
+      workflowName: "LendLoop: loan event emails",
+      nodeName: "Send email",
+      message: "connect ECONNREFUSED",
+      executionId: "42",
+      executionUrl: "javascript:alert(1)",
+    };
+
+    const first = await signedPost(t, "/n8n/events", failure);
+    const repeat = await signedPost(t, "/n8n/events", failure);
+    const invalid = await signedPost(t, "/n8n/events", { ...failure, id: "error:43", message: 7 });
+
+    expect(await first.json()).toEqual({ status: "processed" });
+    expect(await repeat.json()).toEqual({ status: "duplicate" });
+    expect(invalid.status).toBe(400);
+    const failures = await t.withIdentity(alice).query(api.automations.listWorkflowFailures, {});
+    expect(failures).toMatchObject([
+      { workflowName: "LendLoop: loan event emails", nodeName: "Send email" },
+    ]);
+    // Not an http(s) address, so it is dropped rather than shown as a link.
+    expect(failures[0].executionUrl).toBeUndefined();
   });
 });

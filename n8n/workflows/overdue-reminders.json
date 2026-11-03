@@ -220,7 +220,8 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "errorWorkflow": "LendLoopErrors01"
   },
   "active": false
 }
