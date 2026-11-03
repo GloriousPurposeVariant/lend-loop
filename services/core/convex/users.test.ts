@@ -109,3 +109,18 @@ describe("promoteToAdmin", () => {
     );
   });
 });
+
+describe("listForAdmin", () => {
+  test("is admin only and lists members A to Z", async () => {
+    const t = convexTest(schema, modules);
+    await signUp(t, bob);
+    await signUp(t, alice);
+    const firstPage = { paginationOpts: { numItems: 10, cursor: null } };
+
+    await expectAppError(t.withIdentity(bob).query(api.users.listForAdmin, firstPage), "FORBIDDEN");
+    await t.mutation(internal.users.promoteToAdmin, { email: alice.email });
+    const result = await t.withIdentity(alice).query(api.users.listForAdmin, firstPage);
+    expect(result.page.map((user) => user.displayName)).toEqual(["Alice", "Bob"]);
+    expect(result.page[0]).not.toHaveProperty("tokenIdentifier");
+  });
+});

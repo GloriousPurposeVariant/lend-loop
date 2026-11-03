@@ -4,8 +4,9 @@ import type { Id } from "./_generated/dataModel";
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import { requireOwnerOrAdmin, requireUser } from "./lib/auth";
 import { appError } from "./lib/errors";
-import { declinePendingRequests } from "./lib/loans";
-import { cleanToolText, toolConditionValidator } from "./lib/toolFields";
+import { toIsoDate } from "./lib/dates";
+import { declinePendingRequests, toolAvailability } from "./lib/loans";
+import { cleanToolText, TOOL_LIMITS, toolConditionValidator } from "./lib/toolFields";
 
 // What anyone, signed in or not, may see about a tool. The `returns` validator
 // enforces it: returning any other field makes the query fail.
@@ -34,6 +35,9 @@ const browseToolValidator = v.object({
   ownerName: v.string(),
   ownerIsTrustedLender: v.boolean(),
   isMine: v.boolean(),
+  availability: v.union(v.literal("available"), v.literal("onLoan")),
+  availableFrom: v.optional(v.string()),
+  upcomingBookings: v.array(v.object({ startDate: v.string(), endDate: v.string() })),
 });
 
 async function categoryLabel(ctx: QueryCtx, categoryId: Id<"categories">) {
@@ -62,22 +66,41 @@ export const listPublic = query({
   },
 });
 
-/** Signed-in tool browser, newest first, optionally filtered by category. */
+/**
+ * Signed-in tool browser, optionally filtered by category and searched by name.
+ * Newest first, or best match first when searching.
+ */
 export const browse = query({
-  args: { categoryId: v.optional(v.id("categories")), paginationOpts: paginationOptsValidator },
+  args: {
+    categoryId: v.optional(v.id("categories")),
+    search: v.optional(v.string()),
+    paginationOpts: paginationOptsValidator,
+  },
   returns: paginationResultValidator(browseToolValidator),
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     const { categoryId } = args;
+    const search = args.search?.trim().slice(0, TOOL_LIMITS.nameMax) ?? "";
     const tools =
-      categoryId === undefined
-        ? ctx.db.query("tools").withIndex("by_status", (q) => q.eq("status", "active"))
-        : ctx.db
-            .query("tools")
-            .withIndex("by_status_and_category", (q) =>
-              q.eq("status", "active").eq("categoryId", categoryId),
-            );
-    const result = await tools.order("desc").paginate(args.paginationOpts);
+      search !== ""
+        ? ctx.db.query("tools").withSearchIndex("search_name", (q) => {
+            const active = q.search("name", search).eq("status", "active");
+            return categoryId === undefined ? active : active.eq("categoryId", categoryId);
+          })
+        : categoryId === undefined
+          ? ctx.db
+              .query("tools")
+              .withIndex("by_status", (q) => q.eq("status", "active"))
+              .order("desc")
+          : ctx.db
+              .query("tools")
+              .withIndex("by_status_and_category", (q) =>
+                q.eq("status", "active").eq("categoryId", categoryId),
+              )
+              .order("desc");
+    const result = await tools.paginate(args.paginationOpts);
+    const today = toIsoDate(Date.now());
+
     const page = await Promise.all(
       result.page.map(async (tool) => {
         const owner = await ctx.db.get("users", tool.ownerId);
@@ -90,6 +113,7 @@ export const browse = query({
           ownerName: owner?.displayName ?? "Unknown user",
           ownerIsTrustedLender: owner?.isTrustedLender ?? false,
           isMine: tool.ownerId === user._id,
+          ...(await toolAvailability(ctx, tool._id, today)),
         };
       }),
     );

@@ -1,8 +1,10 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { rangesOverlap, type DateRange } from "./dates";
+import { addDays, rangesOverlap, type DateRange } from "./dates";
 
 // Loan rules shared by loans.ts and tools.ts.
+
+const MAX_UPCOMING_SHOWN = 3;
 
 /** Loans of a tool in one status that end on or after `fromDate`. */
 export async function loansEndingFrom(
@@ -52,4 +54,26 @@ export async function declinePendingRequests(
     });
   }
   return toDecline.length;
+}
+
+/**
+ * Whether a tool is out right now, when it is expected back, and its next approved
+ * bookings. Dates only: who borrowed it stays private.
+ */
+export async function toolAvailability(ctx: QueryCtx, toolId: Id<"tools">, today: string) {
+  // Every approved loan, including overdue ones: the tool is out until marked returned.
+  const approved = await loansEndingFrom(ctx, toolId, "approved", "");
+  const current = approved.find((loan) => loan.startDate <= today);
+  const upcoming = approved
+    .filter((loan) => loan.startDate > today)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))
+    .slice(0, MAX_UPCOMING_SHOWN)
+    .map(({ startDate, endDate }) => ({ startDate, endDate }));
+
+  return {
+    availability: current ? ("onLoan" as const) : ("available" as const),
+    // Only promised when the loan has not run past its end date.
+    availableFrom: current && current.endDate >= today ? addDays(current.endDate, 1) : undefined,
+    upcomingBookings: upcoming,
+  };
 }

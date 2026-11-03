@@ -2,6 +2,7 @@
 
 import { api } from "@lendloop/core/convex/_generated/api";
 import { usePaginatedQuery } from "convex/react";
+import { buttonStyles, cardStyles, EmptyState, ListSkeleton } from "@/components/ui";
 
 const PAGE_SIZE = 20;
 
@@ -13,31 +14,22 @@ export function PublicToolList() {
   );
 
   if (status === "LoadingFirstPage") {
-    return (
-      <ul aria-busy="true" className="divide-y divide-gray-100">
-        {Array.from({ length: 3 }, (_, i) => (
-          <li key={i} className="h-12 animate-pulse bg-gray-50" />
-        ))}
-      </ul>
-    );
+    return <ListSkeleton />;
   }
-
   if (results.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-gray-500">
-        No tools listed yet. Be the first to lend one.
-      </p>
-    );
+    return <EmptyState title="No tools listed yet. Be the first to lend one." />;
   }
 
   return (
     <div>
-      <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+      <ul className="grid gap-3 sm:grid-cols-2">
         {/* The public list has no ids on purpose, so position is the key. */}
         {results.map((tool, i) => (
-          <li key={i} className="flex items-center justify-between px-4 py-3">
+          <li key={i} className={`${cardStyles} flex items-center justify-between px-4 py-3`}>
             <span className="font-medium">{tool.name}</span>
-            <span className="text-sm text-gray-500">{tool.category}</span>
+            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
+              {tool.category}
+            </span>
           </li>
         ))}
       </ul>
@@ -45,7 +37,7 @@ export function PublicToolList() {
         <button
           type="button"
           onClick={() => loadMore(PAGE_SIZE)}
-          className="mt-4 text-sm font-medium text-gray-700 underline"
+          className={`${buttonStyles.secondary} mt-4`}
         >
           Show more
         </button>

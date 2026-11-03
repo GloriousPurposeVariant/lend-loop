@@ -4,6 +4,7 @@ import { api } from "@lendloop/core/convex/_generated/api";
 import type { Id } from "@lendloop/core/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
+import { buttonStyles, cardStyles, EmptyState, ErrorText, ListSkeleton } from "@/components/ui";
 import { getErrorMessage } from "@/lib/errors";
 import { CONDITION_LABELS } from "@/lib/labels";
 
@@ -13,7 +14,7 @@ export function MyListings() {
   const [error, setError] = useState<string | null>(null);
 
   async function handleRemove(toolId: Id<"tools">, name: string) {
-    if (!window.confirm(`Remove "${name}" from LendLoop?`)) {
+    if (!window.confirm(`Remove "${name}" from LendLoop? Pending requests for it are declined.`)) {
       return;
     }
     setError(null);
@@ -25,25 +26,17 @@ export function MyListings() {
   }
 
   if (tools === undefined) {
-    return <p className="text-sm text-gray-500">Loading your listings…</p>;
+    return <ListSkeleton />;
   }
-
   if (tools.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-gray-500">
-        You have not listed any tools yet.
-      </p>
-    );
+    return <EmptyState title="You have not listed any tools yet. Use the form above." />;
   }
 
   return (
-    <div>
-      {error !== null && (
-        <p role="alert" className="mb-2 text-sm text-red-600">
-          {error}
-        </p>
-      )}
-      <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+    <div className="space-y-3">
+      <h2 className="text-lg font-semibold">Your tools</h2>
+      <ErrorText message={error} />
+      <ul className={`${cardStyles} divide-y divide-gray-100`}>
         {tools.map((tool) => (
           <li key={tool._id} className="flex items-start justify-between gap-4 px-4 py-3">
             <div>
@@ -56,7 +49,7 @@ export function MyListings() {
             <button
               type="button"
               onClick={() => handleRemove(tool._id, tool.name)}
-              className="text-sm text-red-600 hover:underline"
+              className={buttonStyles.danger}
             >
               Remove
             </button>
