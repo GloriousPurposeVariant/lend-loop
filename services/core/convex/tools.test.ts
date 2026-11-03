@@ -99,6 +99,28 @@ describe("listPublic", () => {
   });
 });
 
+describe("browse", () => {
+  test("requires sign-in, filters by category and flags the caller's own tools", async () => {
+    const t = convexTest(schema, modules);
+    const { categoryId } = await setup(t);
+    const gardenId = await seedCategory(t, "garden");
+    await t
+      .withIdentity(bob)
+      .mutation(api.tools.create, { ...drill(gardenId), name: "Hedge trimmer" });
+
+    await expectAppError(t.query(api.tools.browse, firstPage), "UNAUTHENTICATED");
+
+    const all = await t.withIdentity(alice).query(api.tools.browse, firstPage);
+    const power = await t.withIdentity(alice).query(api.tools.browse, { ...firstPage, categoryId });
+    expect(all.page.map((tool) => [tool.name, tool.isMine])).toEqual([
+      ["Hedge trimmer", false],
+      ["Cordless drill", true],
+    ]);
+    expect(power.page.map((tool) => tool.name)).toEqual(["Cordless drill"]);
+    expect(power.page[0]).toMatchObject({ ownerName: "Alice", categoryLabel: "Power tools" });
+  });
+});
+
 describe("listMine", () => {
   test("returns only the caller's tools", async () => {
     const t = convexTest(schema, modules);
