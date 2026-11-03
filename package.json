@@ -12,6 +12,8 @@
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",
     "convex:admin-key": "docker compose exec convex-backend ./generate_admin_key.sh",
+    "n8n:import": "docker compose exec -T n8n n8n import:credentials --input=/lendloop/credentials/mailpit-smtp.json && docker compose exec -T n8n n8n import:workflow --separate --input=/lendloop/workflows && docker compose exec -T n8n n8n publish:workflow --id=LendLoopEmails01 && docker compose exec -T n8n n8n publish:workflow --id=LendLoopReminder && docker compose restart n8n",
+    "n8n:reminders": "docker compose exec -T -e N8N_RUNNERS_BROKER_PORT=5681 n8n n8n execute --id=LendLoopReminder",
     "dev:web": "npm run dev -w @lendloop/web",
     "dev:core": "npm run dev -w @lendloop/core",
     "categories:seed": "npm run categories:seed -w @lendloop/core",

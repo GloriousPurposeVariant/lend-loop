@@ -1,0 +1,295 @@
+{
+  "id": "LendLoopEmails01",
+  "name": "LendLoop: loan event emails",
+  "nodes": [
+    {
+      "id": "1573fe33-8233-4702-aec4-39845b5db5ca",
+      "name": "Loan event from Convex",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "daaf75a2-5afb-46c1-b2bb-059e17f94398",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lendloop-events",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "1ee7a7a9-a747-49e8-bc52-589f3d146533",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "parameters": {
+        "jsCode": "// Checks the request really came from Convex, exactly as Convex's lib/signing.ts\n// does the other way round: HMAC-SHA256 of \"<timestamp>.<raw body>\" with the shared\n// secret, and a timestamp no more than 5 minutes from now.\nconst crypto = require('crypto');\nconst MAX_SKEW_SECONDS = 5 * 60;\n\nconst { headers } = $input.first().json;\n// The raw bytes Convex signed. Re-serialising parsed JSON could change them.\nconst body = (await this.helpers.getBinaryDataBuffer(0, 'data')).toString('utf8');\nconst timestamp = headers['x-lendloop-timestamp'] ?? '';\nconst signature = headers['x-lendloop-signature'] ?? '';\n\nconst expected =\n  'sha256=' +\n  crypto.createHmac('sha256', $env.LENDLOOP_EVENTS_SECRET).update(`${timestamp}.${body}`).digest('hex');\nconst fresh =\n  /^\\d+$/.test(timestamp) && Math.abs(Date.now() / 1000 - Number(timestamp)) <= MAX_SKEW_SECONDS;\n// Constant-time comparison; it needs equal lengths, and a wrong length is simply invalid.\nconst matches =\n  signature.length === expected.length &&\n  crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));\n\nreturn [{ json: { valid: fresh && matches, event: fresh && matches ? JSON.parse(body) : null } }];\n"
+      }
+    },
+    {
+      "id": "33d40497-a931-4fb7-b123-ac62be2ce7c5",
+      "name": "Signature valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "33d40497-a931-4fb7-b123-ac62be2ce7c5-c",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3dd4fe8f-50d6-4075-a23a-d2ec1447098d",
+      "name": "Reject (401)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [660, 460],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"Invalid or expired signature.\" } }}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    },
+    {
+      "id": "f05b0903-3501-4ca5-965a-23e576f4718a",
+      "name": "Skip repeats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 200],
+      "parameters": {
+        "jsCode": "// Convex retries reuse the event id. Ids of events already emailed are kept in this\n// workflow's static data (stored with the workflow; production runs only).\nconst state = $getWorkflowStaticData('global');\nconst handled = state.handledEventIds ?? [];\nconst { event } = $input.first().json;\nreturn [{ json: { event, duplicate: handled.includes(event.id) } }];\n"
+      }
+    },
+    {
+      "id": "62632dc0-c25d-4652-9faa-abd2dee9e996",
+      "name": "Already emailed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 200],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "62632dc0-c25d-4652-9faa-abd2dee9e996-c",
+              "leftValue": "={{ $json.duplicate }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "0cf557bb-e2b3-435e-94e6-1c1023b68037",
+      "name": "Duplicate (200)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1100, 60],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"duplicate\" } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "80c12bbf-0277-4b8c-8bd1-2b1ad361ee21",
+      "name": "Compose email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 260],
+      "parameters": {
+        "jsCode": "// One email per event, to the person who needs to act on it or know about it.\nconst { type, data } = $input.first().json.event;\nconst appUrl = $env.LENDLOOP_APP_URL;\nconst dates =\n  data.startDate === data.endDate ? data.startDate : `${data.startDate} to ${data.endDate}`;\nconst declineReasons = {\n  conflict: 'someone else was approved for those dates first',\n  toolRemoved: 'the tool is no longer listed',\n};\n\nconst emails = {\n  'loan.requested': {\n    to: data.lender,\n    subject: `${data.borrower.name} wants to borrow your ${data.toolName}`,\n    text: `${data.borrower.name} asked to borrow your ${data.toolName} from ${dates}.\\n\\nApprove or decline: ${appUrl}/incoming`,\n  },\n  'loan.approved': {\n    to: data.borrower,\n    subject: `${data.lender.name} approved your request for the ${data.toolName}`,\n    text: `You can borrow the ${data.toolName} from ${dates}. Arrange the pick-up with ${data.lender.name}.\\n\\nYour requests: ${appUrl}/requests`,\n  },\n  'loan.declined': {\n    to: data.borrower,\n    subject: `Your request for the ${data.toolName} was declined`,\n    text:\n      (data.declineReason\n        ? `Your request for ${dates} was declined because ${declineReasons[data.declineReason]}.`\n        : `${data.lender.name} can't lend the ${data.toolName} from ${dates}.`) +\n      `\\n\\nFind something else: ${appUrl}/tools`,\n  },\n  'loan.cancelled': {\n    to: data.lender,\n    subject: `${data.borrower.name} cancelled their request for your ${data.toolName}`,\n    text: `The request for ${dates} was withdrawn. Nothing for you to do.\\n\\nIncoming requests: ${appUrl}/incoming`,\n  },\n  'loan.returned': {\n    to: data.borrower,\n    subject: `Thanks for returning the ${data.toolName}`,\n    text: `${data.lender.name} marked the ${data.toolName} as returned. Thanks for looking after it.`,\n  },\n};\n\nconst email = emails[type];\nif (!email) {\n  throw new Error(`No email for event type ${type}`);\n}\nreturn [\n  {\n    json: {\n      to: `${email.to.name} <${email.to.email}>`,\n      subject: email.subject,\n      text: `Hi ${email.to.name},\\n\\n${email.text}\\n\\nLendLoop`,\n    },\n  },\n];\n"
+      }
+    },
+    {
+      "id": "8d5f9aae-7569-41ce-8e92-53af59d057e2",
+      "name": "Send email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1320, 260],
+      "credentials": {
+        "smtp": {
+          "id": "LendLoopMailpit1",
+          "name": "Mailpit (local SMTP)"
+        }
+      },
+      "parameters": {
+        "fromEmail": "LendLoop <noreply@lendloop.test>",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.text }}",
+        "options": {
+          "appendAttribution": false
+        }
+      }
+    },
+    {
+      "id": "577196ab-2fe6-4f0b-bd6a-5551b5e8dd04",
+      "name": "Remember event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 260],
+      "parameters": {
+        "jsCode": "// Only reached after the email was sent, so a failed send is retried by Convex\n// and not mistaken for a duplicate. Keeps the last 1000 ids.\nconst state = $getWorkflowStaticData('global');\nconst { id } = $('Skip repeats').first().json.event;\nstate.handledEventIds = [...(state.handledEventIds ?? []), id].slice(-1000);\nreturn [{ json: { status: 'sent', eventId: id } }];\n"
+      }
+    },
+    {
+      "id": "63259f57-cfd2-415e-8024-8dc8760174b3",
+      "name": "Sent (200)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1760, 260],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Loan event from Convex": {
+      "main": [
+        [
+          {
+            "node": "Verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          {
+            "node": "Signature valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature valid?": {
+      "main": [
+        [
+          {
+            "node": "Skip repeats",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject (401)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip repeats": {
+      "main": [
+        [
+          {
+            "node": "Already emailed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already emailed?": {
+      "main": [
+        [
+          {
+            "node": "Duplicate (200)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Compose email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose email": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email": {
+      "main": [
+        [
+          {
+            "node": "Remember event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remember event": {
+      "main": [
+        [
+          {
+            "node": "Sent (200)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
