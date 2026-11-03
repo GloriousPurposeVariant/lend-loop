@@ -133,7 +133,7 @@
       "typeVersion": 2,
       "position": [1100, 260],
       "parameters": {
-        "jsCode": "// One email per event, to the person who needs to act on it or know about it.\nconst { type, data } = $input.first().json.event;\nconst appUrl = $env.LENDLOOP_APP_URL;\nconst dates =\n  data.startDate === data.endDate ? data.startDate : `${data.startDate} to ${data.endDate}`;\nconst declineReasons = {\n  conflict: 'someone else was approved for those dates first',\n  toolRemoved: 'the tool is no longer listed',\n};\n\nconst emails = {\n  'loan.requested': {\n    to: data.lender,\n    subject: `${data.borrower.name} wants to borrow your ${data.toolName}`,\n    text: `${data.borrower.name} asked to borrow your ${data.toolName} from ${dates}.\\n\\nApprove or decline: ${appUrl}/incoming`,\n  },\n  'loan.approved': {\n    to: data.borrower,\n    subject: `${data.lender.name} approved your request for the ${data.toolName}`,\n    text: `You can borrow the ${data.toolName} from ${dates}. Arrange the pick-up with ${data.lender.name}.\\n\\nYour requests: ${appUrl}/requests`,\n  },\n  'loan.declined': {\n    to: data.borrower,\n    subject: `Your request for the ${data.toolName} was declined`,\n    text:\n      (data.declineReason\n        ? `Your request for ${dates} was declined because ${declineReasons[data.declineReason]}.`\n        : `${data.lender.name} can't lend the ${data.toolName} from ${dates}.`) +\n      `\\n\\nFind something else: ${appUrl}/tools`,\n  },\n  'loan.cancelled': {\n    to: data.lender,\n    subject: `${data.borrower.name} cancelled their request for your ${data.toolName}`,\n    text: `The request for ${dates} was withdrawn. Nothing for you to do.\\n\\nIncoming requests: ${appUrl}/incoming`,\n  },\n  'loan.returned': {\n    to: data.borrower,\n    subject: `Thanks for returning the ${data.toolName}`,\n    text: `${data.lender.name} marked the ${data.toolName} as returned. Thanks for looking after it.`,\n  },\n};\n\nconst email = emails[type];\nif (!email) {\n  throw new Error(`No email for event type ${type}`);\n}\nreturn [\n  {\n    json: {\n      to: `${email.to.name} <${email.to.email}>`,\n      subject: email.subject,\n      text: `Hi ${email.to.name},\\n\\n${email.text}\\n\\nLendLoop`,\n    },\n  },\n];\n"
+        "jsCode": "// One email per event, to the person who needs to act on it or know about it.\nconst { type, data } = $input.first().json.event;\nconst appUrl = $env.LENDLOOP_APP_URL;\nconst dates =\n  data.startDate === data.endDate ? data.startDate : `${data.startDate} to ${data.endDate}`;\nconst declineReasons = {\n  conflict: 'someone else was approved for those dates first',\n  toolRemoved: 'the tool is no longer listed',\n};\n\nconst emails = {\n  'loan.requested': {\n    recipient: 'lender',\n    to: data.lender,\n    subject: `${data.borrower.name} wants to borrow your ${data.toolName}`,\n    text: `${data.borrower.name} asked to borrow your ${data.toolName} from ${dates}.\\n\\nApprove or decline: ${appUrl}/incoming`,\n  },\n  'loan.approved': {\n    recipient: 'borrower',\n    to: data.borrower,\n    subject: `${data.lender.name} approved your request for the ${data.toolName}`,\n    text: `You can borrow the ${data.toolName} from ${dates}. Arrange the pick-up with ${data.lender.name}.\\n\\nYour requests: ${appUrl}/requests`,\n  },\n  'loan.declined': {\n    recipient: 'borrower',\n    to: data.borrower,\n    subject: `Your request for the ${data.toolName} was declined`,\n    text:\n      (data.declineReason\n        ? `Your request for ${dates} was declined because ${declineReasons[data.declineReason]}.`\n        : `${data.lender.name} can't lend the ${data.toolName} from ${dates}.`) +\n      `\\n\\nFind something else: ${appUrl}/tools`,\n  },\n  'loan.cancelled': {\n    recipient: 'lender',\n    to: data.lender,\n    subject: `${data.borrower.name} cancelled their request for your ${data.toolName}`,\n    text: `The request for ${dates} was withdrawn. Nothing for you to do.\\n\\nIncoming requests: ${appUrl}/incoming`,\n  },\n  'loan.returned': {\n    recipient: 'borrower',\n    to: data.borrower,\n    subject: `Thanks for returning the ${data.toolName}`,\n    text: `${data.lender.name} marked the ${data.toolName} as returned. Thanks for looking after it.`,\n  },\n};\n\nconst email = emails[type];\nif (!email) {\n  throw new Error(`No email for event type ${type}`);\n}\nreturn [\n  {\n    json: {\n      recipient: email.recipient,\n      to: `${email.to.name} <${email.to.email}>`,\n      subject: email.subject,\n      text: `Hi ${email.to.name},\\n\\n${email.text}\\n\\nLendLoop`,\n    },\n  },\n];\n"
       }
     },
     {
@@ -170,14 +170,54 @@
       }
     },
     {
+      "id": "1d2e3f40-5a6b-4c7d-8e9f-a0b1c2d3e4f5",
+      "name": "Sign email report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, 260],
+      "parameters": {
+        "jsCode": "// Tells Convex the email went out, for the recipient's activity feed. The id comes\n// from the event id, so if this report is ever repeated, Convex records it once.\nconst crypto = require('crypto');\nconst { event } = $('Skip repeats').first().json;\nconst { recipient } = $('Compose email').first().json;\nconst body = JSON.stringify({\n  id: `email:${event.id}`,\n  type: 'email.sent',\n  loanId: event.loanId,\n  recipient,\n});\nconst timestamp = Math.floor(Date.now() / 1000).toString();\nconst signature =\n  'sha256=' +\n  crypto.createHmac('sha256', $env.LENDLOOP_REQUESTS_SECRET).update(`${timestamp}.${body}`).digest('hex');\nreturn [{ json: { body, timestamp, signature } }];\n"
+      }
+    },
+    {
+      "id": "2e3f4051-6b7c-4d8e-9fa0-b1c2d3e4f5a6",
+      "name": "Report email sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, 260],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LENDLOOP_CONVEX_SITE_URL }}/n8n/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-LendLoop-Timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "X-LendLoop-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
       "id": "63259f57-cfd2-415e-8024-8dc8760174b3",
       "name": "Sent (200)",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1760, 260],
+      "position": [2200, 260],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ $json }}",
+        "responseBody": "={{ { \"status\": \"sent\" } }}",
         "options": {
           "responseCode": 200
         }
@@ -277,6 +317,28 @@
       ]
     },
     "Remember event": {
+      "main": [
+        [
+          {
+            "node": "Sign email report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign email report": {
+      "main": [
+        [
+          {
+            "node": "Report email sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Report email sent": {
       "main": [
         [
           {
