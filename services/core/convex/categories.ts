@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAdmin } from "./lib/auth";
-import { cleanCategoryLabel, DEFAULT_CATEGORY_LABELS, slugify } from "./lib/categoryFields";
+import { ensureDefaultCategories } from "./lib/categories";
+import { cleanCategoryLabel, slugify } from "./lib/categoryFields";
 import { appError } from "./lib/errors";
 
 const categoryValidator = v.object({
@@ -103,18 +104,6 @@ export const seed = internalMutation({
   args: {},
   returns: v.number(),
   handler: async (ctx) => {
-    let added = 0;
-    for (const label of DEFAULT_CATEGORY_LABELS) {
-      const slug = slugify(label);
-      const existing = await ctx.db
-        .query("categories")
-        .withIndex("by_slug", (q) => q.eq("slug", slug))
-        .unique();
-      if (existing === null) {
-        await ctx.db.insert("categories", { slug, label, isActive: true });
-        added++;
-      }
-    }
-    return added;
+    return await ensureDefaultCategories(ctx);
   },
 });
