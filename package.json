@@ -10,6 +10,8 @@
   ],
   "scripts": {
     "infra:up": "docker compose up -d --wait",
+    "env:init": "node scripts/env.mjs init",
+    "env:sync": "node scripts/env.mjs sync",
     "infra:down": "docker compose down",
     "convex:admin-key": "docker compose exec convex-backend ./generate_admin_key.sh",
     "n8n:import": "docker compose exec -T n8n n8n import:credentials --input=/lendloop/credentials/mailpit-smtp.json && docker compose exec -T n8n n8n import:workflow --separate --input=/lendloop/workflows && docker compose exec -T n8n n8n publish:workflow --id=LendLoopEmails01 && docker compose exec -T n8n n8n publish:workflow --id=LendLoopReminder && docker compose exec -T n8n n8n publish:workflow --id=LendLoopErrors01 && docker compose restart n8n",
@@ -20,6 +22,7 @@
     "seed": "npm run seed -w @lendloop/core",
     "seed:clear": "npm run seed:clear -w @lendloop/core",
     "n8n:request": "npm run n8n:request -w @lendloop/core --",
+    "admin:promote": "npm run admin:promote -w @lendloop/core --",
     "lint": "npm run lint -w @lendloop/web",
     "typecheck": "npm run typecheck --workspaces",
     "test": "npm run test -w @lendloop/core",
