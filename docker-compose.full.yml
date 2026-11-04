@@ -1,0 +1,103 @@
+# The whole of LendLoop in Docker: production builds, no Node.js needed on the host.
+#   docker compose -f docker-compose.full.yml up -d --build
+# Reads only /.env (create it with `npm run env:init`). The infrastructure services are
+# the same ones as in docker-compose.yml, reused with `extends`, so they share its data.
+name: lendloop
+
+services:
+  convex-backend:
+    extends: { file: docker-compose.yml, service: convex-backend }
+
+  convex-dashboard:
+    extends: { file: docker-compose.yml, service: convex-dashboard }
+
+  mailpit:
+    extends: { file: docker-compose.yml, service: mailpit }
+
+  n8n:
+    extends: { file: docker-compose.yml, service: n8n }
+    depends_on:
+      n8n-import:
+        condition: service_completed_successfully
+
+  # One-off: writes the Convex admin key for the jobs below. The key is derived from the
+  # instance secret, so it is the same every time.
+  convex-admin-key:
+    image: ghcr.io/convex/convex-backend@sha256:207cf95def42f01614b6e3af0af5c20d0dcaa5ff2adf258ee7bc9555576644fa
+    entrypoint:
+      - /bin/sh
+      - -c
+      - ./generate_key "$$INSTANCE_NAME" "$$INSTANCE_SECRET" > /run/lendloop/convex-admin-key
+    environment:
+      INSTANCE_NAME: ${CONVEX_INSTANCE_NAME:?set CONVEX_INSTANCE_NAME in .env}
+      INSTANCE_SECRET: ${CONVEX_INSTANCE_SECRET:?set CONVEX_INSTANCE_SECRET in .env}
+    volumes:
+      - convex-admin:/run/lendloop
+
+  # One-off: sets the Convex deployment's environment, deploys the functions and loads
+  # the default categories (scripts/docker/deploy.mjs).
+  convex-deploy:
+    build: { context: ., target: tools }
+    image: lendloop-tools
+    command: ["node", "scripts/docker/deploy.mjs"]
+    environment:
+      CLERK_JWT_ISSUER_DOMAIN: ${CLERK_JWT_ISSUER_DOMAIN:?set CLERK_JWT_ISSUER_DOMAIN in .env}
+      LENDLOOP_ALLOW_SEED: ${LENDLOOP_ALLOW_SEED:-false}
+      N8N_OUTBOUND_SECRET: ${N8N_OUTBOUND_SECRET:?set N8N_OUTBOUND_SECRET in .env}
+      N8N_INBOUND_SECRET: ${N8N_INBOUND_SECRET:?set N8N_INBOUND_SECRET in .env}
+    volumes:
+      - convex-admin:/run/lendloop:ro
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+      convex-admin-key:
+        condition: service_completed_successfully
+
+  # One-off: imports and publishes the workflows from n8n/ before n8n starts.
+  n8n-import:
+    extends: { file: docker-compose.yml, service: n8n }
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        n8n import:credentials --input=/lendloop/credentials/mailpit-smtp.json &&
+        n8n import:workflow --separate --input=/lendloop/workflows &&
+        n8n publish:workflow --id=LendLoopEmails01 &&
+        n8n publish:workflow --id=LendLoopReminder &&
+        n8n publish:workflow --id=LendLoopErrors01
+    ports: !reset []
+    healthcheck:
+      disable: true
+    depends_on: !reset {}
+
+  # The production Next.js server. http://localhost:3000
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        NEXT_PUBLIC_CONVEX_URL: http://127.0.0.1:3210
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:?set CLERK_PUBLISHABLE_KEY in .env}
+    image: lendloop-web
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:?set CLERK_SECRET_KEY in .env}
+    depends_on:
+      convex-deploy:
+        condition: service_completed_successfully
+
+  # Not started by `up`. For commands once the stack is up, e.g. seed data:
+  #   docker compose -f docker-compose.full.yml run --rm tools npm run seed
+  tools:
+    image: lendloop-tools
+    profiles: [tools]
+    entrypoint: ["node", "scripts/docker/run.mjs"]
+    volumes:
+      - convex-admin:/run/lendloop:ro
+
+volumes:
+  convex-data:
+  n8n-data:
+  convex-admin:
