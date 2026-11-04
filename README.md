@@ -66,13 +66,15 @@ overdue reminder, and an error workflow that reports any failed run back to the 
  n8n (Docker) ── SMTP ──▶ Mailpit (Docker, local inbox)
 ```
 
-| Part           | Where                      | Role                                                                    |
-| -------------- | -------------------------- | ----------------------------------------------------------------------- |
-| Web app        | `apps/web`                 | Next.js App Router UI. No business rules: it calls Convex functions.    |
-| Backend        | `services/core/convex`     | Schema, queries, mutations, HTTP endpoints, crons. All rules live here. |
-| Shared helpers | `services/core/convex/lib` | Auth checks, dates, signing, loan rules. Not exposed as API functions.  |
-| Workflows      | `n8n/workflows`            | n8n workflow JSON, imported with `npm run n8n:import`.                  |
-| Infrastructure | `docker-compose.yml`       | Convex backend and dashboard, n8n, Mailpit, all pinned by image digest. |
+| Part           | Where                                   | Role                                                                                 |
+| -------------- | --------------------------------------- | ------------------------------------------------------------------------------------ |
+| Web app        | `apps/web`                              | Next.js App Router UI. No business rules: it calls Convex functions.                 |
+| Backend        | `services/core/convex`                  | Schema, queries, mutations, HTTP endpoints, crons. All rules live here.              |
+| Shared helpers | `services/core/convex/lib`              | Auth checks, dates, signing, loan rules. Not exposed as API functions.               |
+| Workflows      | `n8n/workflows`                         | n8n workflow JSON, imported with `npm run n8n:import`.                               |
+| Infrastructure | `docker-compose.yml`                    | Convex backend and dashboard, n8n, Mailpit, all pinned by image digest.              |
+| Full stack     | `docker-compose.full.yml`, `Dockerfile` | The above plus setup jobs and the production web app, all in Docker.                 |
+| Setup scripts  | `scripts/`                              | `env.mjs` creates `/.env` and the dev env files; `docker/` holds the container jobs. |
 
 It is an npm workspaces monorepo: `@lendloop/web` imports the generated Convex API types
 from `@lendloop/core`, so a backend change that breaks the frontend fails the typecheck.
@@ -84,23 +86,21 @@ n8n), `activity` (one row per person per feed entry) and `workflowFailures`.
 
 ## Getting started
 
+Both ways of running LendLoop read one settings file, `/.env`:
+
+- **Development setup** (below): the infrastructure runs in Docker; the web app and the
+  Convex functions run from your checkout and reload on every save.
+- **Optional: everything in Docker** ([jump](#optional-run-everything-in-docker)): production
+  builds of the whole stack in a few commands, with only Docker installed. Handy for trying
+  it out or reviewing it.
+
 ### Prerequisites
 
-- Node.js 24 (see `.nvmrc`) and npm
 - Docker Desktop
 - A free Clerk account (development instance)
+- Node.js 24 (see `.nvmrc`); not needed for the Docker-only route
 
-### 1. Install
-
-```sh
-git clone https://github.com/GloriousPurposeVariant/lend-loop.git
-cd lend-loop
-npm ci
-```
-
-`npm ci` also installs the pre-commit hook that formats staged files.
-
-### 2. Configure Clerk
+### 1. Configure Clerk
 
 In the Clerk dashboard:
 
@@ -109,72 +109,48 @@ In the Clerk dashboard:
    ```json
    { "aud": "convex", "name": "{{user.full_name}}", "email": "{{user.primary_email_address}}" }
    ```
-2. **Configure → API keys:** copy the publishable key, the secret key and the **Frontend
-   API URL** (for example `https://your-instance.clerk.accounts.dev`).
+2. **Configure → API keys:** copy the **publishable key** and the **secret key**.
 
-### 3. Create the env files
-
-`.env.example` lists every variable, grouped by the file it belongs in:
-
-| File                       | What goes in it                                                      |
-| -------------------------- | -------------------------------------------------------------------- |
-| `.env`                     | Convex instance name and secret, n8n encryption key, two n8n secrets |
-| `services/core/.env.local` | Convex URL and admin key (the admin key comes in step 4)             |
-| `apps/web/.env.local`      | Convex URL and the two Clerk keys                                    |
-
-Generate each secret with:
+### 2. Create `/.env`
 
 ```sh
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+git clone https://github.com/GloriousPurposeVariant/lend-loop.git
+cd lend-loop
+npm run env:init
 ```
 
-### 4. Start the stack
+This creates `/.env` with every secret generated. Paste the two Clerk keys into
+`CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`, then run `npm run env:init` once more: it
+fills in `CLERK_JWT_ISSUER_DOMAIN` from the publishable key. Running it again never changes
+a value you have.
+
+### 3. Run it
 
 ```sh
-npm run infra:up          # Convex, its dashboard, n8n, Mailpit
-npm run convex:admin-key  # copy the key into services/core/.env.local
+npm ci              # also installs the pre-commit hook
+npm run infra:up    # Convex, its dashboard, n8n, Mailpit
+npm run env:sync    # writes services/core/.env.local and apps/web/.env.local from /.env,
+                    # and sets the Convex deployment's environment
+npm run dev:core    # keeps running: deploys the Convex functions on every save
 ```
 
-### 5. Configure the Convex deployment
-
-These are read by Convex functions running in the container, so they are set on the
-deployment, not in a file. From `services/core`:
+In a second terminal:
 
 ```sh
-npx convex env set CLERK_JWT_ISSUER_DOMAIN https://your-instance.clerk.accounts.dev
-npx convex env set LENDLOOP_ALLOW_SEED true   # development only
-npx convex env set N8N_WEBHOOK_URL http://n8n:5678/webhook/lendloop-events
-npx convex env set N8N_OUTBOUND_SECRET <same value as in /.env>
-npx convex env set N8N_INBOUND_SECRET <same value as in /.env>
+npm run categories:seed
+npm run n8n:import  # imports and publishes the three n8n workflows
+npm run dev:web     # http://localhost:3000
 ```
 
-### 6. Deploy the backend, load data and workflows
+### 4. Make yourself an admin
 
-From the repository root:
+Sign in once in the app, so your account exists, then:
 
 ```sh
-npm run dev:core          # keeps running: deploys Convex functions on every save
-npm run categories:seed   # default categories (second terminal)
-npm run n8n:import        # imports and publishes the three n8n workflows
-npm run dev:web           # http://localhost:3000
+npm run admin:promote -- you@example.com
 ```
 
-### 7. Make yourself an admin
-
-Sign in once in the app, so your user exists, then from `services/core`:
-
-```sh
-npx convex run users:promoteToAdmin '{"email":"you@example.com"}'
-```
-
-In Windows PowerShell 5.1, which strips the quotes from that JSON, use:
-
-```powershell
-$json = '{"email":"you@example.com"}' -replace '"', '\"'
-npx convex run users:promoteToAdmin $json
-```
-
-### 8. Optional: sample data
+### 5. Optional: sample data
 
 ```sh
 npm run seed        # 4 sample members, 10 tools, loans in every state
@@ -182,7 +158,47 @@ npm run seed:clear  # removes only the sample data
 ```
 
 Seed users have `.test` email addresses and can never sign in. Both commands refuse to run
-unless `LENDLOOP_ALLOW_SEED=true` is set on the deployment.
+unless `LENDLOOP_ALLOW_SEED` is `true`.
+
+### Optional: run everything in Docker
+
+The whole stack as production builds, with only Docker installed. After steps 1 and 2
+(without Node.js, create `/.env` with
+`docker run --rm -v "${PWD}:/app" -w /app node:24-bookworm-slim node scripts/env.mjs init`):
+
+```sh
+docker compose -f docker-compose.full.yml up -d --build
+```
+
+The first run builds the images, which takes a few minutes. Compose then starts everything
+in order:
+
+1. `convex-backend`, `mailpit`
+2. `convex-admin-key`: writes the Convex admin key to a shared volume
+3. `convex-deploy`: sets the deployment's environment from `/.env`, deploys the functions
+   and loads the default categories
+4. `n8n-import`, then `n8n`: imports and publishes the three workflows before n8n starts
+5. `web`: the production Next.js server on <http://localhost:3000>
+
+The one-off jobs show as **exited (0)** in `docker compose -f docker-compose.full.yml ps -a`:
+that means they succeeded. Every other command runs in the `tools` container:
+
+```sh
+# make yourself an admin (sign in once first)
+docker compose -f docker-compose.full.yml run --rm tools npm run admin:promote -- you@example.com
+
+# sample data, and removing it again
+docker compose -f docker-compose.full.yml run --rm tools npm run seed
+docker compose -f docker-compose.full.yml run --rm tools npm run seed:clear
+
+# run the overdue reminders now
+docker compose exec -T -e N8N_RUNNERS_BROKER_PORT=5681 n8n n8n execute --id=LendLoopReminder
+```
+
+After changing code or `/.env`, run the same `up -d --build` again. Stop with
+`docker compose -f docker-compose.full.yml down`. Both setups use the same Docker volumes,
+so you can switch between them and keep your data; stop `npm run dev:web` first, because
+the `web` container also uses port 3000.
 
 ### Local addresses
 
@@ -196,16 +212,22 @@ unless `LENDLOOP_ALLOW_SEED=true` is set on the deployment.
 
 ## Everyday commands
 
-| Command                                           | What it does                                             |
-| ------------------------------------------------- | -------------------------------------------------------- |
-| `npm run infra:up` / `infra:down`                 | Start or stop the Docker stack (data is kept in volumes) |
-| `npm run dev:core`                                | Deploy Convex functions on every save                    |
-| `npm run dev:web`                                 | Next.js dev server                                       |
-| `npm run n8n:import`                              | Re-import and publish the n8n workflows from the repo    |
-| `npm run n8n:reminders`                           | Run the overdue-reminder workflow now                    |
-| `npm run n8n:request -- overdue`                  | Send a signed request to Convex as n8n would (debugging) |
-| `npm test`                                        | Backend tests                                            |
-| `npm run lint` / `typecheck` / `build` / `format` | The other checks CI runs                                 |
+| Command                                           | What it does                                                                                    |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `npm run env:init`                                | Create `/.env`, or add what is missing, with secrets generated                                  |
+| `npm run env:sync`                                | Dev mode: write the two `.env.local` files and the Convex deployment's environment from `/.env` |
+| `npm run infra:up` / `infra:down`                 | Start or stop the dev infrastructure (data is kept in volumes)                                  |
+| `npm run dev:core`                                | Deploy Convex functions on every save                                                           |
+| `npm run dev:web`                                 | Next.js dev server                                                                              |
+| `npm run admin:promote -- you@example.com`        | Make a member an admin                                                                          |
+| `npm run n8n:import`                              | Re-import and publish the n8n workflows from the repo                                           |
+| `npm run n8n:reminders`                           | Run the overdue-reminder workflow now                                                           |
+| `npm run n8n:request -- overdue`                  | Send a signed request to Convex as n8n would (debugging)                                        |
+| `npm test`                                        | Backend tests                                                                                   |
+| `npm run lint` / `typecheck` / `build` / `format` | The other checks CI runs                                                                        |
+
+In the full Docker stack, run the npm commands through the `tools` container:
+`docker compose -f docker-compose.full.yml run --rm tools npm run <command>`.
 
 ## Testing
 

@@ -8,6 +8,7 @@
     "seed": "convex run seed:run",
     "seed:clear": "convex run seed:clear",
     "n8n:request": "node scripts/n8n-request.mjs",
+    "admin:promote": "node scripts/promote-admin.mjs",
     "typecheck": "tsc -p convex/tsconfig.json",
     "test": "vitest run"
   },
