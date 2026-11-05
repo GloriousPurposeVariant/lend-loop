@@ -43,3 +43,9 @@ yarn-error.log*
 
 # clerk keyless mode stores temporary keys here
 .clerk/
+
+# python (agent service)
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/

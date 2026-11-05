@@ -1,0 +1,136 @@
+# LendLoop Assistant: the agent services. Only used when named explicitly, on top of
+# docker-compose.yml, so the existing setup never reads it:
+#   docker compose -f docker-compose.yml -f docker-compose.agent.yml up -d   (npm run agent:up)
+# Same project name, so the agent shares the network with Convex and n8n.
+name: lendloop
+
+services:
+  # The agent's own database: conversations, audit log, embeddings (pgvector),
+  # plus a separate "phoenix" database for traces.
+  agent-db:
+    image: pgvector/pgvector@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f # 0.8.6-pg17-bookworm
+    stop_grace_period: 10s
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${AGENT_DB_PASSWORD:?set AGENT_DB_PASSWORD in .env (npm run env:init)}
+      POSTGRES_DB: agent
+    volumes:
+      - agent-db-data:/var/lib/postgresql/data
+      - ./agent/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: pg_isready -U agent -d agent
+      interval: 5s
+      start_period: 10s
+
+  # Self-hosted tracing: every model call, tool call and RAG search. UI: http://localhost:6006
+  phoenix:
+    image: arizephoenix/phoenix@sha256:d77e94c0227e46490d9d935d5b58dcd8799feade912491b8182a49ad76d154b1 # version-20.24.0
+    stop_grace_period: 10s
+    ports:
+      - "127.0.0.1:6006:6006"
+    environment:
+      PHOENIX_SQL_DATABASE_URL: postgresql://agent:${AGENT_DB_PASSWORD}@agent-db:5432/phoenix
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:6006/healthz')",
+        ]
+      interval: 5s
+      start_period: 20s
+    depends_on:
+      agent-db:
+        condition: service_healthy
+
+  # One-off: applies agent/migrations/*.sql before the services start.
+  agent-migrate:
+    build: { context: ./agent, target: runtime }
+    image: lendloop-agent
+    command: ["lendloop-agent", "migrate"]
+    environment: &agent-env
+      AGENT_DATABASE_URL: postgresql://agent:${AGENT_DB_PASSWORD}@agent-db:5432/agent
+      AGENT_JWT_ISSUER: ${CLERK_JWT_ISSUER_DOMAIN:?set CLERK_JWT_ISSUER_DOMAIN in .env}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://phoenix:6006
+    depends_on:
+      agent-db:
+        condition: service_healthy
+
+  # The chat API (FastAPI). http://localhost:8000/docs
+  agent-api:
+    image: lendloop-agent
+    command:
+      [
+        "uvicorn",
+        "lendloop_agent.api.app:create_app",
+        "--factory",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+      ]
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment: *agent-env
+    healthcheck: &agent-health
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 5s
+      start_period: 10s
+    depends_on: &agent-deps
+      agent-migrate:
+        condition: service_completed_successfully
+      phoenix:
+        condition: service_healthy
+
+  # The MCP server: LendLoop's tools for the agent and any MCP client. http://localhost:8001/mcp
+  agent-mcp:
+    image: lendloop-agent
+    command:
+      [
+        "uvicorn",
+        "lendloop_agent.mcp_server.server:create_app",
+        "--factory",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8001",
+      ]
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment: *agent-env
+    healthcheck:
+      <<: *agent-health
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')",
+        ]
+    depends_on: *agent-deps
+
+  # Lint, type check and tests in the dev image: npm run agent:check
+  agent-check:
+    build: { context: ./agent, target: dev }
+    image: lendloop-agent-dev
+    # Not started by `up`; run with: npm run agent:check
+    profiles: [check]
+    command:
+      ["sh", "-c", "ruff check && ruff format --check && pyright && pytest -p no:cacheprovider"]
+    environment:
+      AGENT_TEST_DATABASE_URL: postgresql://agent:${AGENT_DB_PASSWORD}@agent-db:5432/agent_test
+    depends_on:
+      agent-db:
+        condition: service_healthy
+
+volumes:
+  agent-db-data:

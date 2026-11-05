@@ -1,0 +1,56 @@
+[project]
+name = "lendloop-agent"
+version = "0.1.0"
+description = "LendLoop Assistant: a LangGraph agent service with MCP tools, RAG and tracing."
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "fastapi==0.159.1",
+  "uvicorn[standard]==0.54.0",
+  "pydantic==2.14.1",
+  "pydantic-settings==2.16.1",
+  "pyjwt[crypto]==2.15.1",
+  "psycopg[binary]==3.3.6",
+  "psycopg-pool==3.3.3",
+  "structlog==26.1.0",
+  "opentelemetry-sdk==1.45.1",
+  "opentelemetry-exporter-otlp-proto-http==1.45.1",
+  "opentelemetry-instrumentation-fastapi==0.66b1",
+  "mcp==2.3.0",
+  "httpx==0.28.1",
+  "typer==0.27.3",
+]
+
+[project.scripts]
+lendloop-agent = "lendloop_agent.cli:app"
+
+[dependency-groups]
+dev = [
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+  "ruff==0.17.1",
+  "pyright==1.1.414",
+]
+
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+# Errors, warnings, import order, modern syntax, likely bugs, simpler code.
+select = ["E", "W", "F", "I", "UP", "B", "SIM"]
+
+[tool.pyright]
+include = ["src", "tests"]
+# Check against the packages installed by `uv sync` in .venv.
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
