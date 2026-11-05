@@ -41,7 +41,11 @@ services:
           "import urllib.request; urllib.request.urlopen('http://localhost:6006/healthz')",
         ]
       interval: 5s
-      start_period: 20s
+      # Phoenix takes 30 s to 4 min to start when the whole stack starts at once on a
+      # laptop; failed checks in this window do not count against it.
+      start_period: 180s
+      retries: 10
+
     depends_on:
       agent-db:
         condition: service_healthy
@@ -55,6 +59,15 @@ services:
       AGENT_DATABASE_URL: postgresql://agent:${AGENT_DB_PASSWORD}@agent-db:5432/agent
       AGENT_JWT_ISSUER: ${CLERK_JWT_ISSUER_DOMAIN:?set CLERK_JWT_ISSUER_DOMAIN in .env}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://phoenix:6006
+      # Default models ("provider:model"); `lendloop-agent models use` overrides them.
+      AGENT_MODEL: ${AGENT_MODEL:-}
+      AGENT_FAST_MODEL: ${AGENT_FAST_MODEL:-}
+      # Only the providers you use need a key. Ollama runs locally and needs none.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OLLAMA_BASE_URL: http://ollama:11434
+
     depends_on:
       agent-db:
         condition: service_healthy
@@ -84,12 +97,16 @@ services:
           "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
         ]
       interval: 5s
-      start_period: 10s
+      start_period: 30s
+      retries: 5
+
     depends_on: &agent-deps
       agent-migrate:
         condition: service_completed_successfully
+      # Started, not healthy: tracing must never stop the agent from serving. Spans
+      # are buffered and sent once Phoenix is ready.
       phoenix:
-        condition: service_healthy
+        condition: service_started
 
   # The MCP server: LendLoop's tools for the agent and any MCP client. http://localhost:8001/mcp
   agent-mcp:
@@ -118,6 +135,23 @@ services:
         ]
     depends_on: *agent-deps
 
+  # Local models, run on this machine. Opt-in: npm run agent:local-model
+  ollama:
+    image: ollama/ollama@sha256:2b8eecdb85aa6ea67c381c8ecffec04b2658496cf2821a8f88b0485bdff198e8 # 0.40.8
+    profiles: [local-llm]
+    stop_grace_period: 10s
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      # Keep a model loaded for 30 minutes after its last use: reloading takes seconds.
+      OLLAMA_KEEP_ALIVE: 30m
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      start_period: 10s
+
   # Lint, type check and tests in the dev image: npm run agent:check
   agent-check:
     build: { context: ./agent, target: dev }
@@ -134,3 +168,4 @@ services:
 
 volumes:
   agent-db-data:
+  ollama-models:
