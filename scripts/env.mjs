@@ -32,6 +32,7 @@ const SETTINGS = [
   { name: "N8N_ENCRYPTION_KEY", value: secret },
   { name: "N8N_OUTBOUND_SECRET", value: secret },
   { name: "N8N_INBOUND_SECRET", value: secret },
+  { name: "AGENT_DB_PASSWORD", value: secret },
   { comment: "Development only: allows the sample-data commands. Never true in production." },
   { name: "LENDLOOP_ALLOW_SEED", value: () => "true" },
 ];
