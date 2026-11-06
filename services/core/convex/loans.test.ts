@@ -112,6 +112,54 @@ describe("request", () => {
   });
 });
 
+describe("checkAvailability", () => {
+  async function check(t: TestConvex, identity: typeof bob, toolId: Id<"tools">, range: object) {
+    return await t
+      .withIdentity(identity)
+      .query(api.loans.checkAvailability, { toolId, ...nov10to12, ...range });
+  }
+
+  test("says yes for free dates, and the request then succeeds", async () => {
+    const t = convexTest(schema, modules);
+    const { toolId } = await setup(t);
+    expect(await check(t, bob, toolId, {})).toEqual({ available: true, bookedRanges: [] });
+    await requestAs(t, bob, toolId, nov10to12);
+  });
+
+  test("says no with the same reasons request gives, and lists booked dates", async () => {
+    const t = convexTest(schema, modules);
+    const { toolId } = await setup(t);
+    const loanId = await requestAs(t, bob, toolId, nov10to12);
+    await t.withIdentity(alice).mutation(api.loans.approve, { loanId });
+
+    const overlapping = await check(t, carol, toolId, nov12to14);
+    expect(overlapping).toEqual({
+      available: false,
+      reason: "This tool is already booked for some of those dates.",
+      bookedRanges: [nov10to12],
+    });
+    expect((await check(t, alice, toolId, nov20to21)).reason).toMatch(/your own tool/);
+    expect((await check(t, carol, toolId, { startDate: "2026-10-01" })).reason).toMatch(
+      /in the past/,
+    );
+    expect((await check(t, carol, toolId, nov20to21)).available).toBe(true);
+  });
+
+  test("changes nothing, and refuses removed tools and signed-out callers", async () => {
+    const t = convexTest(schema, modules);
+    const { toolId } = await setup(t);
+    await check(t, bob, toolId, {});
+    expect(await t.run((ctx) => ctx.db.query("loans").collect())).toHaveLength(0);
+
+    await expectAppError(
+      t.query(api.loans.checkAvailability, { toolId, ...nov10to12 }),
+      "UNAUTHENTICATED",
+    );
+    await t.withIdentity(alice).mutation(api.tools.remove, { toolId });
+    await expectAppError(check(t, bob, toolId, {}), "NOT_FOUND");
+  });
+});
+
 describe("approve", () => {
   test("only the lender can approve, not the borrower or an admin", async () => {
     const t = convexTest(schema, modules);

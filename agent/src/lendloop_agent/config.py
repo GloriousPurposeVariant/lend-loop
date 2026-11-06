@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # Browser origins allowed to call agent-api (the Next.js app).
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    # LendLoop's Convex backend, called by the MCP tools as the signed-in member.
+    convex_url: str = "http://convex-backend:3210"
+    # Host names agent-mcp answers to; requests naming any other host are refused
+    # (DNS rebinding protection). A JSON list, e.g. '["mcp.example.com"]'.
+    mcp_allowed_hosts: list[str] = ["agent-mcp:8001", "localhost:8001", "127.0.0.1:8001"]
+
     # Default models, "provider:model", used until `lendloop-agent models use` picks one.
     model: str | None = None
     fast_model: str | None = None

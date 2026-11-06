@@ -1,5 +1,3 @@
-import { appError } from "./errors";
-
 // Loan dates are calendar days stored as "YYYY-MM-DD" strings. They have no time
 // zone, sort correctly as plain strings, and read the same everywhere.
 
@@ -47,21 +45,25 @@ export function rangesOverlap(a: DateRange, b: DateRange): boolean {
   return a.startDate <= b.endDate && b.startDate <= a.endDate;
 }
 
-/** Rejects malformed, reversed, past, too long or too distant date ranges. */
-export function validateLoanDates(range: DateRange, now: number): void {
+/**
+ * Why a date range cannot be booked (malformed, reversed, past, too long or too far
+ * ahead), or null when it can. Callers decide whether to throw or to report it.
+ */
+export function loanDateProblem(range: DateRange, now: number): string | null {
   if (!isIsoDate(range.startDate) || !isIsoDate(range.endDate)) {
-    throw appError("INVALID_INPUT", "Dates must be real dates in YYYY-MM-DD format.");
+    return "Dates must be real dates in YYYY-MM-DD format.";
   }
   if (range.startDate > range.endDate) {
-    throw appError("INVALID_INPUT", "The start date must be on or before the end date.");
+    return "The start date must be on or before the end date.";
   }
   if (range.startDate < earliestStartDate(now)) {
-    throw appError("INVALID_INPUT", "The start date cannot be in the past.");
+    return "The start date cannot be in the past.";
   }
   if (loanLengthInDays(range.startDate, range.endDate) > MAX_LOAN_DAYS) {
-    throw appError("INVALID_INPUT", `A loan can last at most ${MAX_LOAN_DAYS} days.`);
+    return `A loan can last at most ${MAX_LOAN_DAYS} days.`;
   }
   if (range.startDate > addDays(toIsoDate(now), MAX_DAYS_AHEAD)) {
-    throw appError("INVALID_INPUT", `You can book at most ${MAX_DAYS_AHEAD} days ahead.`);
+    return `You can book at most ${MAX_DAYS_AHEAD} days ahead.`;
   }
+  return null;
 }
