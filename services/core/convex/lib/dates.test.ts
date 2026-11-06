@@ -1,24 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { ConvexError } from "convex/values";
 import {
   earliestStartDate,
   isIsoDate,
+  loanDateProblem,
   loanLengthInDays,
   rangesOverlap,
-  validateLoanDates,
 } from "./dates";
 
 // 2026-11-02 at 12:00 UTC.
 const NOW = Date.parse("2026-11-02T12:00:00Z");
-
-function errorCode(fn: () => void): string | null {
-  try {
-    fn();
-    return null;
-  } catch (e) {
-    return e instanceof ConvexError ? (e.data as { code: string }).code : "NOT_APP_ERROR";
-  }
-}
 
 describe("isIsoDate", () => {
   test("accepts real dates and rejects everything else", () => {
@@ -62,9 +52,9 @@ describe("rangesOverlap", () => {
   });
 });
 
-describe("validateLoanDates", () => {
+describe("loanDateProblem", () => {
   const check = (startDate: string, endDate: string) =>
-    errorCode(() => validateLoanDates({ startDate, endDate }, NOW));
+    loanDateProblem({ startDate, endDate }, NOW);
 
   test("accepts today, yesterday (grace) and a one-day loan", () => {
     expect(check("2026-11-02", "2026-11-02")).toBeNull();
@@ -72,11 +62,11 @@ describe("validateLoanDates", () => {
   });
 
   test("rejects malformed, reversed, past, too long and too distant ranges", () => {
-    expect(check("2026-11-31", "2026-12-01")).toBe("INVALID_INPUT");
-    expect(check("2026-11-05", "2026-11-04")).toBe("INVALID_INPUT");
-    expect(check("2026-10-31", "2026-11-02")).toBe("INVALID_INPUT");
-    expect(check("2026-11-02", "2026-12-02")).toBe("INVALID_INPUT");
-    expect(check("2027-06-01", "2027-06-02")).toBe("INVALID_INPUT");
+    expect(check("2026-11-31", "2026-12-01")).toMatch(/real dates/);
+    expect(check("2026-11-05", "2026-11-04")).toMatch(/on or before/);
+    expect(check("2026-10-31", "2026-11-02")).toMatch(/in the past/);
+    expect(check("2026-11-02", "2026-12-02")).toMatch(/at most 30 days/);
+    expect(check("2027-06-01", "2027-06-02")).toMatch(/180 days ahead/);
   });
 
   test("allows exactly the maximum length", () => {

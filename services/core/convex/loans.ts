@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { requireAdmin, requireOwner, requireUser } from "./lib/auth";
-import { earliestStartDate, validateLoanDates } from "./lib/dates";
+import { earliestStartDate, loanDateProblem, type DateRange } from "./lib/dates";
 import { appError } from "./lib/errors";
 import { emitLoanEvent } from "./lib/events";
 import { declinePendingRequests, findApprovedOverlap, loansEndingFrom } from "./lib/loans";
@@ -50,6 +50,47 @@ async function getLoan(ctx: MutationCtx, loanId: Id<"loans">) {
   return loan;
 }
 
+/** Loads a tool people can borrow (listed, not removed) or fails with NOT_FOUND. */
+async function getActiveTool(ctx: QueryCtx, toolId: Id<"tools">) {
+  const tool = await ctx.db.get("tools", toolId);
+  if (tool === null || tool.status !== "active") {
+    throw appError("NOT_FOUND", "Tool not found.");
+  }
+  return tool;
+}
+
+/**
+ * Why `user` cannot request `tool` for `range`, or null when they can. `request` and
+ * `checkAvailability` both use it, so a "yes" from the check always holds for the request.
+ */
+async function borrowProblem(
+  ctx: QueryCtx,
+  user: Doc<"users">,
+  tool: Doc<"tools">,
+  range: DateRange,
+): Promise<string | null> {
+  if (tool.ownerId === user._id) {
+    return "You cannot borrow your own tool.";
+  }
+  const dateProblem = loanDateProblem(range, Date.now());
+  if (dateProblem !== null) {
+    return dateProblem;
+  }
+  if ((await findApprovedOverlap(ctx, tool._id, range)) !== null) {
+    return "This tool is already booked for some of those dates.";
+  }
+  const livePending = await loansEndingFrom(
+    ctx,
+    tool._id,
+    "pending",
+    earliestStartDate(Date.now()),
+  );
+  if (livePending.some((loan) => loan.borrowerId === user._id)) {
+    return "You already have a pending request for this tool.";
+  }
+  return null;
+}
+
 function requireStatus(loan: Doc<"loans">, status: Doc<"loans">["status"]) {
   if (loan.status !== status) {
     throw appError("INVALID_INPUT", `This request is ${loan.status}, not ${status}.`);
@@ -62,27 +103,11 @@ export const request = mutation({
   returns: v.id("loans"),
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    const tool = await ctx.db.get("tools", args.toolId);
-    if (tool === null || tool.status !== "active") {
-      throw appError("NOT_FOUND", "Tool not found.");
-    }
-    if (tool.ownerId === user._id) {
-      throw appError("INVALID_INPUT", "You cannot borrow your own tool.");
-    }
+    const tool = await getActiveTool(ctx, args.toolId);
     const range = { startDate: args.startDate, endDate: args.endDate };
-    validateLoanDates(range, Date.now());
-
-    if ((await findApprovedOverlap(ctx, tool._id, range)) !== null) {
-      throw appError("INVALID_INPUT", "This tool is already booked for some of those dates.");
-    }
-    const livePending = await loansEndingFrom(
-      ctx,
-      tool._id,
-      "pending",
-      earliestStartDate(Date.now()),
-    );
-    if (livePending.some((loan) => loan.borrowerId === user._id)) {
-      throw appError("INVALID_INPUT", "You already have a pending request for this tool.");
+    const problem = await borrowProblem(ctx, user, tool, range);
+    if (problem !== null) {
+      throw appError("INVALID_INPUT", problem);
     }
 
     const loanId = await ctx.db.insert("loans", {
@@ -95,6 +120,39 @@ export const request = mutation({
     });
     await emitLoanEvent(ctx, "loan.requested", loanId);
     return loanId;
+  },
+});
+
+const MAX_BOOKED_RANGES = 10;
+
+/**
+ * Whether the caller could request this tool for these dates, and if not, why. Changes
+ * nothing: the assistant checks before suggesting a request. `bookedRanges` lists the
+ * tool's next approved loans (dates only, borrowers stay private) to help pick other dates.
+ */
+export const checkAvailability = query({
+  args: { toolId: v.id("tools"), startDate: v.string(), endDate: v.string() },
+  returns: v.object({
+    available: v.boolean(),
+    reason: v.optional(v.string()),
+    bookedRanges: v.array(v.object({ startDate: v.string(), endDate: v.string() })),
+  }),
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const tool = await getActiveTool(ctx, args.toolId);
+    const range = { startDate: args.startDate, endDate: args.endDate };
+    const problem = await borrowProblem(ctx, user, tool, range);
+    const approved = await loansEndingFrom(
+      ctx,
+      tool._id,
+      "approved",
+      earliestStartDate(Date.now()),
+    );
+    const bookedRanges = approved
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))
+      .slice(0, MAX_BOOKED_RANGES)
+      .map(({ startDate, endDate }) => ({ startDate, endDate }));
+    return { available: problem === null, reason: problem ?? undefined, bookedRanges };
   },
 });
 
