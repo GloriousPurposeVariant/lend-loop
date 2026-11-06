@@ -38,6 +38,7 @@ dev = [
   "ruff==0.17.1",
   "pyright==1.1.414",
   "respx==0.23.1",
+  "jsonschema==4.26.0",
 ]
 
 [build-system]
