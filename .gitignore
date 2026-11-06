@@ -49,3 +49,6 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
+
+# MCP client config: holds personal tokens
+mcp.json
