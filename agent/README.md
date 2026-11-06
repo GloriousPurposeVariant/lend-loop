@@ -73,6 +73,42 @@ A model without a listed price is recorded with tokens but no cost; add its pric
 Gemini's free tier costs nothing up to its limits, but Google may use free-tier prompts to
 improve its products.
 
+## LendLoop's tools (MCP)
+
+`agent-mcp` gives the agent, and any MCP client, read-only tools over LendLoop:
+
+| Tool                 | What it answers                                              |
+| -------------------- | ------------------------------------------------------------ |
+| `list_categories`    | The categories tools are listed under.                       |
+| `search_tools`       | Tools members lend, by name and category, with availability. |
+| `check_availability` | Could I borrow this tool on these dates? If not, why not.    |
+| `my_requests`        | My requests to borrow, optionally only one status.           |
+| `incoming_requests`  | Requests for my tools, e.g. only the pending ones.           |
+| `my_listings`        | The tools I lend.                                            |
+| `my_activity`        | What happened recently to my requests and loans.             |
+| `whoami`             | Who the tools act for.                                       |
+
+Each tool calls LendLoop's Convex backend with the member's own Clerk token, so it sees
+exactly what that member sees in the app. Convex error messages meant for members are
+passed on; anything internal is logged, never shown. Every call is written to
+`audit_log` with its trace id. Tools that change data come later, behind a confirmation.
+
+**Try them in MCP Inspector.** With `npm run agent:up` running and the app open at
+<http://localhost:3000> (signed in), get a token in the browser console:
+
+```js
+await window.Clerk.session.getToken({ template: "convex" });
+```
+
+Then run `npm run agent:inspect`. In the Inspector, choose **Streamable HTTP**, URL
+`http://localhost:8001/mcp`, paste the token as a **Bearer** token, and connect. Tokens
+are short-lived (a minute by default): when a tool answers "Your session has expired",
+get a fresh one.
+
+Settings: `AGENT_CONVEX_URL` (default `http://convex-backend:3210`) and
+`AGENT_MCP_ALLOWED_HOSTS`, a JSON list of host names agent-mcp answers to (default
+`["agent-mcp:8001", "localhost:8001", "127.0.0.1:8001"]`).
+
 ## Local development
 
 For your editor (imports, types, go-to-definition into libraries) and quick test runs.

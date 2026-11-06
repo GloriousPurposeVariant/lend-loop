@@ -18,6 +18,7 @@
     "agent:models": "docker compose -f docker-compose.yml -f docker-compose.agent.yml exec agent-api lendloop-agent models",
     "agent:local-model": "node scripts/agent-local-model.mjs",
     "agent:check": "docker compose -f docker-compose.yml -f docker-compose.agent.yml run --rm --build agent-check",
+    "agent:inspect": "npx -y @modelcontextprotocol/inspector@2.12.0",
     "convex:admin-key": "docker compose exec convex-backend ./generate_admin_key.sh",
     "n8n:import": "docker compose exec -T n8n n8n import:credentials --input=/lendloop/credentials/mailpit-smtp.json && docker compose exec -T n8n n8n import:workflow --separate --input=/lendloop/workflows && docker compose exec -T n8n n8n publish:workflow --id=LendLoopEmails01 && docker compose exec -T n8n n8n publish:workflow --id=LendLoopReminder && docker compose exec -T n8n n8n publish:workflow --id=LendLoopErrors01 && docker compose restart n8n",
     "n8n:reminders": "docker compose exec -T -e N8N_RUNNERS_BROKER_PORT=5681 n8n n8n execute --id=LendLoopReminder",
